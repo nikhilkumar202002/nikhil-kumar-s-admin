@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import authService, { type User } from '../../utils/auth.service'
 import {
   LayoutDashboard,
   Briefcase,
@@ -11,7 +12,7 @@ import {
   Inbox,
   Settings,
   Activity,
-  User,
+  User as UserIcon,
   LogOut,
   ChevronDown,
   Search,
@@ -53,11 +54,22 @@ export default function Sidebar({
 }: SidebarProps) {
   const [currentActive, setCurrentActive] = useState(activeId)
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getStoredUser())
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     projects: true,
     blog: false,
     contact: true,
   })
+
+  useEffect(() => {
+    // Sync current logged-in user details from /users/me
+    authService
+      .getCurrentUser()
+      .then((user) => setCurrentUser(user))
+      .catch(() => {
+        // Fallback to cached user if already stored
+      })
+  }, [])
 
   const menuSections: MenuSection[] = [
     {
@@ -185,7 +197,7 @@ export default function Sidebar({
         {
           id: 'profile',
           label: 'Profile',
-          icon: User,
+          icon: UserIcon,
           subItems: [
             { id: 'profile-me', label: 'My Profile' },
             { id: 'profile-password', label: 'Change Password' },
@@ -373,17 +385,31 @@ export default function Sidebar({
         <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-900/40 border border-zinc-800/60 hover:bg-zinc-900/80 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-500 flex items-center justify-center font-bold text-xs text-white flex-shrink-0">
-              NK
+              {currentUser?.name
+                ? currentUser.name
+                    .split(' ')
+                    .map((n) => n[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()
+                : 'NK'}
             </div>
             <div className="min-w-0 flex flex-col">
-              <span className="text-xs font-semibold text-zinc-200 truncate">Nikhil Kumar</span>
-              <span className="text-[10px] text-zinc-500 truncate">admin@portfolio.dev</span>
+              <span className="text-xs font-semibold text-zinc-200 truncate">
+                {currentUser?.name || 'Nikhil Kumar'}
+              </span>
+              <span className="text-[10px] text-zinc-500 truncate">
+                {currentUser?.email || 'nikhilkumars12343@gmail.com'}
+              </span>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onLogout}
+            onClick={() => {
+              authService.logout()
+              onLogout?.()
+            }}
             title="Log out"
             className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-950/30 transition-colors cursor-pointer"
             aria-label="Log out"

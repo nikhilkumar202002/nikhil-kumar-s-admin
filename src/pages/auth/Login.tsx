@@ -12,6 +12,8 @@ import {
   Loader2,
 } from 'lucide-react'
 
+import authService from '../../utils/auth.service'
+
 export default function Login() {
   const [isDark, setIsDark] = useState(false)
   const [email, setEmail] = useState('')
@@ -22,7 +24,7 @@ export default function Login() {
   const [loginStatus, setLoginStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage('')
 
@@ -35,11 +37,27 @@ export default function Login() {
     setIsLoading(true)
     setLoginStatus('idle')
 
-    // Simulate authentication call
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      await authService.login({
+        email: email.trim(),
+        password: password.trim(),
+      })
+      
       setLoginStatus('success')
-    }, 1000)
+
+      // Fetch user profile to verify token and cache user details
+      try {
+        await authService.getCurrentUser()
+      } catch {
+        // Non-blocking if /users/me response structure differs
+      }
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string }
+      setLoginStatus('error')
+      setErrorMessage(errorObj.message || 'Invalid email or password. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
