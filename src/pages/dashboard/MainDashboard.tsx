@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import authService, { type User } from '../../utils/auth.service'
+import projectService, {
+  type Project,
+  type ProjectStats,
+} from '../../utils/project.service'
 import {
   Briefcase,
   Users,
@@ -17,68 +21,43 @@ import {
   ShieldCheck,
   ChevronRight,
   Filter,
+  Loader2,
 } from 'lucide-react'
 
-export default function MainDashboard() {
+interface MainDashboardProps {
+  onAddProject?: () => void
+  onEditProject?: (id: number) => void
+  onViewAllProjects?: () => void
+}
+
+export default function MainDashboard({
+  onAddProject,
+  onEditProject,
+  onViewAllProjects,
+}: MainDashboardProps) {
   const [user, setUser] = useState<User | null>(() => authService.getStoredUser())
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [liveProjects, setLiveProjects] = useState<Project[]>([])
+  const [projectStats, setProjectStats] = useState<ProjectStats | null>(null)
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true)
 
   useEffect(() => {
     authService.getCurrentUser()
       .then((data) => setUser(data))
-      .catch(() => {
-        // Fallback to cached user
-      })
-  }, [])
+      .catch(() => {})
 
-  // Sample Portfolio Projects Data
-  const projects = [
-    {
-      id: 1,
-      title: 'AI Workflow Platform',
-      category: 'Fullstack',
-      tech: ['React 19', 'TypeScript', 'Node.js', 'PostgreSQL'],
-      views: '8,420',
-      status: 'Live',
-      updated: '2 hours ago',
-      featured: true,
-      url: 'https://demo.portfolio.dev/ai-platform',
-    },
-    {
-      id: 2,
-      title: 'Distributed Task Engine',
-      category: 'Backend',
-      tech: ['Go', 'Redis', 'Docker', 'Kubernetes'],
-      views: '5,190',
-      status: 'Live',
-      updated: 'Yesterday',
-      featured: true,
-      url: 'https://demo.portfolio.dev/task-engine',
-    },
-    {
-      id: 3,
-      title: 'Cloud Architecture Visualizer',
-      category: 'Web App',
-      tech: ['Next.js', 'TailwindCSS', 'WebGL', 'Three.js'],
-      views: '3,840',
-      status: 'Live',
-      updated: '3 days ago',
-      featured: false,
-      url: 'https://demo.portfolio.dev/cloud-viz',
-    },
-    {
-      id: 4,
-      title: 'Microservices Gateway API',
-      category: 'DevOps',
-      tech: ['Node.js', 'Express', 'JWT', 'Nginx'],
-      views: '2,910',
-      status: 'In Progress',
-      updated: '5 days ago',
-      featured: false,
-      url: '#',
-    },
-  ]
+    // Load live project statistics
+    projectService.getStats()
+      .then((stats) => setProjectStats(stats))
+      .catch(() => {})
+
+    // Load live portfolio projects
+    projectService.getAll({ limit: 6 })
+      .then((res) => setLiveProjects(res.projects))
+      .catch(() => {})
+      .finally(() => setIsLoadingProjects(false))
+  }, [])
 
   // Sample Inquiries Data
   const recentMessages = [
@@ -146,9 +125,18 @@ export default function MainDashboard() {
     },
   ]
 
-  const filteredProjects = selectedCategory === 'all'
-    ? projects
-    : projects.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase())
+  // Dynamic categories from live projects
+  const availableCategories = [
+    'all',
+    ...Array.from(new Set(liveProjects.map((p) => p.category).filter(Boolean))),
+  ]
+
+  const filteredProjects =
+    selectedCategory === 'all'
+      ? liveProjects
+      : liveProjects.filter(
+          (p) => (p.category || '').toLowerCase() === selectedCategory.toLowerCase()
+        )
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 bg-black text-zinc-100 min-h-full font-sans">
@@ -202,6 +190,7 @@ export default function MainDashboard() {
 
           <button
             type="button"
+            onClick={onAddProject}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold shadow-xs transition-all cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" />
@@ -223,16 +212,26 @@ export default function MainDashboard() {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-white tracking-tight">28</span>
-            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-400">
-              <TrendingUp className="w-3 h-3" />
-              +3 new
+            <span className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              {projectStats?.totalProjects ?? liveProjects.length}
             </span>
+            {projectStats && (
+              <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-400">
+                <TrendingUp className="w-3 h-3" />
+                {projectStats.featuredProjects} featured
+              </span>
+            )}
           </div>
           <div className="mt-2 text-xs text-zinc-500 flex items-center gap-2">
-            <span>22 published</span>
+            <span>{projectStats?.publishedProjects ?? liveProjects.filter(p => p.status === 'published').length} published</span>
             <span>•</span>
-            <span>4 in review</span>
+            <span>{projectStats?.draftProjects ?? liveProjects.filter(p => p.status === 'draft').length} drafts</span>
+            {projectStats?.archivedProjects ? (
+              <>
+                <span>•</span>
+                <span>{projectStats.archivedProjects} archived</span>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -473,10 +472,22 @@ export default function MainDashboard() {
       <div className="p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-zinc-400" />
-              <span>Featured Portfolio Projects</span>
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-zinc-400" />
+                <span>Featured Portfolio Projects</span>
+              </h2>
+              {onViewAllProjects && (
+                <button
+                  type="button"
+                  onClick={onViewAllProjects}
+                  className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span>View all</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <p className="text-xs text-zinc-400 mt-1">
               Manage your top highlighted works displayed on the public portfolio.
             </p>
@@ -485,7 +496,7 @@ export default function MainDashboard() {
           {/* Category Filter Pills */}
           <div className="flex items-center gap-2 flex-wrap">
             <Filter className="w-3.5 h-3.5 text-zinc-500" />
-            {['all', 'fullstack', 'backend', 'web app', 'devops'].map((cat) => (
+            {availableCategories.map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -502,98 +513,173 @@ export default function MainDashboard() {
           </div>
         </div>
 
-        {/* Projects Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 pb-3">
-              <tr>
-                <th className="pb-3 pr-4">Project Title</th>
-                <th className="pb-3 px-4">Category</th>
-                <th className="pb-3 px-4">Technologies</th>
-                <th className="pb-3 px-4">Views</th>
-                <th className="pb-3 px-4">Status</th>
-                <th className="pb-3 pl-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/50">
-              {filteredProjects.map((project) => (
-                <tr key={project.id} className="hover:bg-zinc-900/40 transition-colors group">
-                  <td className="py-3.5 pr-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 font-bold text-xs flex-shrink-0">
-                        {project.title.slice(0, 1)}
-                      </div>
-                      <div>
-                        <span className="font-semibold text-zinc-100 group-hover:text-white transition-colors">
-                          {project.title}
-                        </span>
-                        <span className="text-[10px] text-zinc-500 block">
-                          Updated {project.updated}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="text-zinc-300 font-medium">{project.category}</span>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {project.tech.map((t, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4 font-mono text-zinc-300">
-                    <div className="flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5 text-zinc-500" />
-                      <span>{project.views}</span>
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                        project.status === 'Live'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          project.status === 'Live' ? 'bg-emerald-400' : 'bg-amber-400'
-                        }`}
-                      />
-                      {project.status}
-                    </span>
-                  </td>
-                  <td className="py-3.5 pl-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <a
-                        href={project.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                        title="View Live Demo"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-[11px] font-medium transition-colors cursor-pointer"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </td>
+        {/* Loading State */}
+        {isLoadingProjects ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-3 text-zinc-400">
+            <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+            <p className="text-xs">Loading live projects...</p>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          /* Empty State */
+          <div className="py-12 text-center rounded-xl border border-dashed border-zinc-800/80 bg-zinc-900/20 p-6">
+            <Briefcase className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+            <p className="text-sm font-medium text-zinc-300">No projects found</p>
+            <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+              {selectedCategory !== 'all'
+                ? `No projects found under the "${selectedCategory}" category.`
+                : 'You have not created any portfolio projects yet.'}
+            </p>
+            {onAddProject && (
+              <button
+                type="button"
+                onClick={onAddProject}
+                className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-zinc-950 text-xs font-semibold hover:bg-zinc-200 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Your First Project</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Projects Table */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 pb-3">
+                <tr>
+                  <th className="pb-3 pr-4">Project Title</th>
+                  <th className="pb-3 px-4">Category</th>
+                  <th className="pb-3 px-4">Technologies</th>
+                  <th className="pb-3 px-4">Views</th>
+                  <th className="pb-3 px-4">Status</th>
+                  <th className="pb-3 pl-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50">
+                {filteredProjects.map((project) => {
+                  const updatedDate = project.updated_at
+                    ? new Date(project.updated_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    : 'Recently'
+
+                  return (
+                    <tr
+                      key={project.id}
+                      className="hover:bg-zinc-900/40 transition-colors group"
+                    >
+                      <td className="py-3.5 pr-4">
+                        <div className="flex items-center gap-3">
+                          {project.cover_image ? (
+                            <img
+                              src={project.cover_image}
+                              alt={project.title}
+                              className="w-8 h-8 rounded-lg object-cover bg-zinc-900 border border-zinc-800 flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 font-bold text-xs flex-shrink-0">
+                              {project.title.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-zinc-100 group-hover:text-white transition-colors">
+                                {project.title}
+                              </span>
+                              {project.is_featured ? (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  Featured
+                                </span>
+                              ) : null}
+                            </div>
+                            <span className="text-[10px] text-zinc-500 block">
+                              Updated {updatedDate}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="text-zinc-300 font-medium capitalize">
+                          {project.category || 'General'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {(project.technologies || []).slice(0, 3).map((techName, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400"
+                            >
+                              {techName}
+                            </span>
+                          ))}
+                          {(project.technologies || []).length > 3 ? (
+                            <span className="text-[10px] text-zinc-500">
+                              +{(project.technologies || []).length - 3}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-zinc-300">
+                        <div className="flex items-center gap-1">
+                          <Eye className="w-3.5 h-3.5 text-zinc-500" />
+                          <span>{project.views_count ?? 0}</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            project.status === 'published'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : project.status === 'draft'
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              project.status === 'published'
+                                ? 'bg-emerald-400'
+                                : project.status === 'draft'
+                                ? 'bg-amber-400'
+                                : 'bg-zinc-500'
+                            }`}
+                          />
+                          <span className="capitalize">{project.status}</span>
+                        </span>
+                      </td>
+                      <td className="py-3.5 pl-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {project.project_url ? (
+                            <a
+                              href={project.project_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                              title="View Live Demo"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          ) : null}
+                          {onEditProject ? (
+                            <button
+                              type="button"
+                              onClick={() => onEditProject(project.id)}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-[11px] font-medium transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* 5. Lower Grid: Contact Messages & Activity Feed */}

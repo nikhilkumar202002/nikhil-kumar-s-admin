@@ -3,6 +3,8 @@ import Login from './pages/auth/Login'
 import Sidebar from './component/layout/Sidebar'
 import Header from './component/layout/Header'
 import MainDashboard from './pages/dashboard/MainDashboard'
+import ProjectsList from './pages/projects/ProjectsList'
+import ProjectForm from './pages/projects/ProjectForm'
 import authService from './utils/auth.service'
 
 export default function App() {
@@ -10,6 +12,7 @@ export default function App() {
     authService.isAuthenticated()
   )
   const [activeMenuId, setActiveMenuId] = useState<string>('dashboard')
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -19,13 +22,104 @@ export default function App() {
     return () => window.removeEventListener('storage', handleAuthChange)
   }, [])
 
-  // If authenticated, render Admin Panel Layout with Sidebar, Header & MainDashboard
+  const getPageTitle = (id: string) => {
+    switch (id) {
+      case 'dashboard':
+        return 'Dashboard Overview'
+      case 'projects':
+      case 'projects-all':
+        return 'Portfolio Projects'
+      case 'projects-add':
+        return 'Add New Project'
+      case 'projects-edit':
+        return 'Edit Project'
+      case 'projects-categories':
+        return 'Project Categories'
+      default:
+        return id.replace('-', ' ')
+    }
+  }
+
+  const renderContent = () => {
+    switch (activeMenuId) {
+      case 'dashboard':
+        return (
+          <MainDashboard
+            onAddProject={() => {
+              setEditingProjectId(null)
+              setActiveMenuId('projects-add')
+            }}
+            onEditProject={(id) => {
+              setEditingProjectId(id)
+              setActiveMenuId('projects-edit')
+            }}
+            onViewAllProjects={() => setActiveMenuId('projects-all')}
+          />
+        )
+
+      case 'projects':
+      case 'projects-all':
+      case 'projects-categories':
+        return (
+          <ProjectsList
+            onAddProject={() => {
+              setEditingProjectId(null)
+              setActiveMenuId('projects-add')
+            }}
+            onEditProject={(id) => {
+              setEditingProjectId(id)
+              setActiveMenuId('projects-edit')
+            }}
+          />
+        )
+
+      case 'projects-add':
+        return (
+          <ProjectForm
+            projectId={null}
+            onCancel={() => setActiveMenuId('projects-all')}
+            onSuccess={() => setActiveMenuId('projects-all')}
+          />
+        )
+
+      case 'projects-edit':
+        return (
+          <ProjectForm
+            projectId={editingProjectId}
+            onCancel={() => setActiveMenuId('projects-all')}
+            onSuccess={() => setActiveMenuId('projects-all')}
+          />
+        )
+
+      default:
+        return (
+          <MainDashboard
+            onAddProject={() => {
+              setEditingProjectId(null)
+              setActiveMenuId('projects-add')
+            }}
+            onEditProject={(id) => {
+              setEditingProjectId(id)
+              setActiveMenuId('projects-edit')
+            }}
+            onViewAllProjects={() => setActiveMenuId('projects-all')}
+          />
+        )
+    }
+  }
+
+  // If authenticated, render Admin Panel Layout with Sidebar, Header & Main content
   if (isAuthenticated) {
     return (
       <div className="flex h-screen w-full bg-black text-zinc-100 overflow-hidden font-sans">
         <Sidebar
           activeId={activeMenuId}
-          onSelect={(id) => setActiveMenuId(id)}
+          onSelect={(id) => {
+            if (id === 'projects-add') {
+              setEditingProjectId(null)
+            }
+            setActiveMenuId(id)
+          }}
           onLogout={() => {
             authService.logout()
             setIsAuthenticated(false)
@@ -33,19 +127,20 @@ export default function App() {
         />
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
           <Header
-            pageTitle={
-              activeMenuId === 'dashboard'
-                ? 'Dashboard Overview'
-                : activeMenuId.replace('-', ' ')
-            }
-            onNavigate={(id) => setActiveMenuId(id)}
+            pageTitle={getPageTitle(activeMenuId)}
+            onNavigate={(id) => {
+              if (id === 'projects-add') {
+                setEditingProjectId(null)
+              }
+              setActiveMenuId(id)
+            }}
             onLogout={() => {
               authService.logout()
               setIsAuthenticated(false)
             }}
           />
           <main className="flex-1 overflow-y-auto bg-black">
-            <MainDashboard />
+            {renderContent()}
           </main>
         </div>
       </div>
