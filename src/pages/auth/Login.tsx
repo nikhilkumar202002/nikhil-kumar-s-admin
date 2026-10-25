@@ -51,6 +51,11 @@ export default function Login() {
       } catch {
         // Non-blocking if /users/me response structure differs
       }
+
+      // Transition to dashboard
+      setTimeout(() => {
+        window.location.reload()
+      }, 600)
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
       setLoginStatus('error')

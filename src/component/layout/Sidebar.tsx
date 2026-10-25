@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import authService, { type User } from '../../utils/auth.service'
+import axiosService from '../../utils/axios.service'
 import {
   LayoutDashboard,
   Briefcase,
@@ -40,6 +41,7 @@ interface MenuSection {
 interface SidebarProps {
   activeId?: string
   onSelect?: (id: string) => void
+  logoUrl?: string
   onLogout?: () => void
   isOpen?: boolean
   onClose?: () => void
@@ -47,6 +49,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   activeId = 'dashboard',
+  logoUrl,
   onSelect,
   onLogout,
   isOpen = true,
@@ -55,11 +58,35 @@ export default function Sidebar({
   const [currentActive, setCurrentActive] = useState(activeId)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getStoredUser())
+  const [logo, setLogo] = useState<string>(logoUrl || '/main-logo.png')
+  const [logoError, setLogoError] = useState(false)
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     projects: true,
     blog: false,
     contact: true,
   })
+
+  useEffect(() => {
+    // If a direct logo URL is passed, use it
+    if (logoUrl) {
+      setLogo(logoUrl)
+      return
+    }
+
+    // Try fetching latest logo from backend settings or fallback to /main-logo.png
+    axiosService
+      .get('/settings')
+      .then((res) => {
+        const remoteLogo = res.data?.data?.logo || res.data?.logo
+        if (remoteLogo) {
+          setLogo(remoteLogo)
+        }
+      })
+      .catch(() => {
+        // Fallback to latest uploaded /main-logo.png
+        setLogo('/main-logo.png')
+      })
+  }, [logoUrl])
 
   useEffect(() => {
     // Sync current logged-in user details from /users/me
@@ -246,20 +273,39 @@ export default function Sidebar({
     >
       {/* Brand Header */}
       <div className="h-16 px-5 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/60">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-zinc-800 via-zinc-700 to-zinc-600 border border-zinc-700/60 flex items-center justify-center shadow-inner">
-            <span className="font-extrabold text-white text-base tracking-wider">▲</span>
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm tracking-tight text-white">Portfolio Admin</span>
-              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                PRO
-              </span>
+        <div className="flex items-center gap-3 min-w-0">
+          {!logoError && logo ? (
+            <div className="flex items-center gap-2 max-w-[190px]">
+              <img
+                src={logo}
+                alt="Portfolio Logo"
+                className="h-8 max-h-8 w-auto max-w-[170px] object-contain transition-opacity duration-200"
+                onError={() => setLogoError(true)}
+              />
             </div>
-            <span className="text-[11px] text-zinc-500">v2.4 • System Live</span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-zinc-800 via-zinc-700 to-zinc-600 border border-zinc-700/60 flex items-center justify-center shadow-inner flex-shrink-0">
+                <span className="font-extrabold text-white text-base tracking-wider">▲</span>
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-sm tracking-tight text-white">Portfolio Admin</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                    PRO
+                  </span>
+                </div>
+                <span className="text-[11px] text-zinc-500">v2.4 • System Live</span>
+              </div>
+            </div>
+          )}
         </div>
+
+        {!logoError && (
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-zinc-900 text-zinc-400 border border-zinc-800 flex-shrink-0">
+            PRO
+          </span>
+        )}
       </div>
 
       {/* Quick Search Input */}
