@@ -570,9 +570,13 @@ export default function MainDashboard({
                     >
                       <td className="py-3.5 pr-4">
                         <div className="flex items-center gap-3">
-                          {project.cover_image ? (
+                          {project.featured_image || project.cover_image ? (
                             <img
-                              src={project.cover_image}
+                              src={
+                                (project.featured_image || project.cover_image)!.startsWith('http')
+                                  ? (project.featured_image || project.cover_image)!
+                                  : `http://localhost:3000${project.featured_image || project.cover_image}`
+                              }
                               alt={project.title}
                               className="w-8 h-8 rounded-lg object-cover bg-zinc-900 border border-zinc-800 flex-shrink-0"
                             />

@@ -4,10 +4,14 @@ export interface ProjectImage {
   id: number
   project_id: number
   image_url: string
-  caption?: string | null
+  image_path?: string
   alt_text?: string | null
+  caption?: string | null
   is_cover: boolean
+  is_featured?: boolean // NEW: Indicates if this image is the featured card image
+  is_banner?: boolean // NEW: Indicates if this image is the hero banner
   display_order: number
+  sort_order?: number
   created_at: string
 }
 
@@ -31,7 +35,11 @@ export interface Project {
   status: 'draft' | 'published' | 'archived'
   display_order: number
   sort_order: number
-  cover_image?: string | null
+  featured_image?: string | null // NEW: Card / thumbnail image
+  banner_image?: string | null // NEW: Wide hero banner for details page
+  cover_image?: string | null // Alias for featured_image
+  gallery_images?: ProjectImage[] // NEW: Alias for project gallery
+  images?: ProjectImage[]
   thumbnail_image?: string | null
   thumbnail_url?: string | null
   meta_title?: string | null
@@ -42,7 +50,6 @@ export interface Project {
   created_at: string
   updated_at: string
   technologies: string[]
-  images?: ProjectImage[]
   views_count?: number
 }
 
@@ -86,6 +93,8 @@ export interface CreateProjectPayload {
   is_featured?: boolean
   status?: 'draft' | 'published' | 'archived'
   display_order?: number
+  featured_image?: string | null // NEW
+  banner_image?: string | null // NEW
   cover_image?: string | null
   meta_title?: string
   meta_description?: string
@@ -234,15 +243,61 @@ export const projectService = {
   /**
    * POST /projects/:id/images - Upload project gallery image
    */
+  /**
+   * POST /projects/upload - Standalone upload of media files (upload-first flow before project creation)
+   */
+  async uploadMedia(fileOrFiles: File | File[]): Promise<ProjectImage[]> {
+    const formData = new FormData()
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles]
+    files.forEach((f) => formData.append("images", f))
+
+    const response = await axiosService.post<ApiResponse<ProjectImage | ProjectImage[]>>(
+      "/projects/upload",
+      formData
+    )
+    const result = response.data.data
+    return Array.isArray(result) ? result : [result]
+  },
+
+  /**
+   * PATCH /projects/:id/select-images - Select featured image and/or banner image from project gallery
+   */
+  async selectImages(
+    projectId: number | string,
+    selections: {
+      featured_image_id?: number
+      banner_image_id?: number
+      cover_image_id?: number
+      featured_image?: string
+      banner_image?: string
+    }
+  ): Promise<Project> {
+    const response = await axiosService.patch<ApiResponse<Project>>(
+      `/projects/${projectId}/select-images`,
+      selections
+    )
+    return response.data.data
+  },
   async uploadImage(
     projectId: number | string,
     file: File,
-    meta?: { alt_text?: string; caption?: string }
+    meta?: {
+      alt_text?: string
+      caption?: string
+      is_cover?: boolean
+      is_featured?: boolean
+      is_banner?: boolean
+      type?: 'featured' | 'banner' | 'gallery'
+    }
   ): Promise<ProjectImage> {
     const formData = new FormData()
     formData.append('image', file)
     if (meta?.alt_text) formData.append('alt_text', meta.alt_text)
     if (meta?.caption) formData.append('caption', meta.caption)
+    if (meta?.is_cover !== undefined) formData.append('is_cover', String(meta.is_cover))
+    if (meta?.is_featured !== undefined) formData.append('is_featured', String(meta.is_featured))
+    if (meta?.is_banner !== undefined) formData.append('is_banner', String(meta.is_banner))
+    if (meta?.type) formData.append('type', meta.type)
 
     const response = await axiosService.post<ApiResponse<ProjectImage>>(
       `/projects/${projectId}/images`,
@@ -262,16 +317,46 @@ export const projectService = {
   },
 
   /**
-   * PATCH /projects/:id/images/:imageId/cover - Set gallery image as project cover
+   * PATCH /projects/:id/images/:imageId/banner - Promote gallery image to banner image
+   */
+  async setBannerImage(
+    projectId: number | string,
+    imageId: number | string
+  ): Promise<ProjectImage> {
+    const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+      `/projects/${projectId}/images/${imageId}/banner`
+    )
+    return response.data.data
+  },
+
+  /**
+   * PATCH /projects/:id/images/:imageId/featured - Promote gallery image to featured image
+   */
+  async setFeaturedImage(
+    projectId: number | string,
+    imageId: number | string
+  ): Promise<ProjectImage> {
+    try {
+      const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+        `/projects/${projectId}/images/${imageId}/featured`
+      )
+      return response.data.data
+    } catch {
+      const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+        `/projects/${projectId}/images/${imageId}/cover`
+      )
+      return response.data.data
+    }
+  },
+
+  /**
+   * PATCH /projects/:id/images/:imageId/cover - Alias for setFeaturedImage
    */
   async setCoverImage(
     projectId: number | string,
     imageId: number | string
   ): Promise<ProjectImage> {
-    const response = await axiosService.patch<ApiResponse<ProjectImage>>(
-      `/projects/${projectId}/images/${imageId}/cover`
-    )
-    return response.data.data
+    return this.setFeaturedImage(projectId, imageId)
   },
 
   /**

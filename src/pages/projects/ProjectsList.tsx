@@ -412,12 +412,12 @@ export default function ProjectsList({
                       <div className="flex items-center gap-3 min-w-[200px]">
                         {/* Thumbnail */}
                         <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
-                          {project.cover_image ? (
+                          {(project.featured_image || project.cover_image) ? (
                             <img
                               src={
-                                project.cover_image.startsWith('http')
-                                  ? project.cover_image
-                                  : `http://localhost:3000${project.cover_image}`
+                                (project.featured_image || project.cover_image)!.startsWith('http')
+                                  ? (project.featured_image || project.cover_image)!
+                                  : `http://localhost:3000${project.featured_image || project.cover_image}`
                               }
                               alt={project.title}
                               className="w-full h-full object-cover"
