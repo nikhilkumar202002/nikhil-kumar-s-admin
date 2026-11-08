@@ -5,6 +5,7 @@ import Header from './component/layout/Header'
 import MainDashboard from './pages/dashboard/MainDashboard'
 import ProjectsList from './pages/projects/ProjectsList'
 import ProjectForm from './pages/projects/ProjectForm'
+import ProjectCategories from './pages/projects/ProjectCategories'
 import ChangePassword from './pages/auth/ChangePassword'
 import ProfileView from './pages/auth/ProfileView'
 import authService from './utils/auth.service'
@@ -61,7 +62,6 @@ export default function App() {
 
       case 'projects':
       case 'projects-all':
-      case 'projects-categories':
         return (
           <ProjectsList
             onAddProject={() => {
@@ -71,6 +71,16 @@ export default function App() {
             onEditProject={(id) => {
               setEditingProjectId(id)
               setActiveMenuId('projects-edit')
+            }}
+          />
+        )
+
+      case 'projects-categories':
+        return (
+          <ProjectCategories
+            onAddProject={() => {
+              setEditingProjectId(null)
+              setActiveMenuId('projects-add')
             }}
           />
         )

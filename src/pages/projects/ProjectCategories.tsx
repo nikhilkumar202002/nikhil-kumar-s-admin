@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Tag,
   Briefcase,
-  FileText,
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react'
