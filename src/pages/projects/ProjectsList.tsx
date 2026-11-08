@@ -18,6 +18,19 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
+  LayoutList,
+  LayoutGrid,
+  Eye,
+  Calendar,
+  Clock,
+  Layers,
+  Cpu,
+  Sparkles,
+  X,
+  Globe,
+  Code2,
+  User,
+  ShieldCheck,
 } from 'lucide-react'
 
 interface ProjectsListProps {
@@ -45,6 +58,9 @@ export default function ProjectsList({
   const [errorMessage, setErrorMessage] = useState('')
   const [successBanner, setSuccessBanner] = useState('')
 
+  // View mode switcher: Table or Grid
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
+
   // Filter state
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -52,6 +68,11 @@ export default function ProjectsList({
   const [featuredOnly, setFeaturedOnly] = useState(false)
   const [sortBy, setSortBy] = useState('display_order')
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC')
+
+  // Single Project Details Modal state
+  const [viewingProject, setViewingProject] = useState<Project | null>(null)
+  const [isLoadingSingle, setIsLoadingSingle] = useState(false)
+  const [singleViewError, setSingleViewError] = useState('')
 
   // Delete modal state
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
@@ -111,7 +132,7 @@ export default function ProjectsList({
     fetchProjects(pagination.page)
   }
 
-  // Toggle Featured status
+  // Toggle Featured status (PATCH /projects/:id/featured)
   const handleToggleFeatured = async (project: Project) => {
     const nextFeatured = !project.is_featured
     // Optimistic UI update
@@ -139,7 +160,7 @@ export default function ProjectsList({
     }
   }
 
-  // Update Status handler
+  // Update Status handler (PATCH /projects/:id/status)
   const handleStatusChange = async (
     project: Project,
     newStatus: 'draft' | 'published' | 'archived'
@@ -162,7 +183,26 @@ export default function ProjectsList({
     }
   }
 
-  // Delete Project handler
+  // Open Single Project Details Modal
+  const handleOpenSingleView = async (project: Project) => {
+    setViewingProject(project)
+    setIsLoadingSingle(true)
+    setSingleViewError('')
+
+    try {
+      const fullDetails = await projectService.getById(project.id)
+      if (fullDetails) {
+        setViewingProject(fullDetails)
+      }
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string }
+      setSingleViewError(errorObj.message || 'Could not load complete project metadata.')
+    } finally {
+      setIsLoadingSingle(false)
+    }
+  }
+
+  // Delete Project handler (DELETE /projects/:id)
   const confirmDeleteProject = async () => {
     if (!projectToDelete) return
     setIsDeleting(true)
@@ -178,6 +218,20 @@ export default function ProjectsList({
       setErrorMessage(errorObj.message || 'Failed to delete project')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  // Date formatter
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return '—'
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    } catch {
+      return dateString
     }
   }
 
@@ -201,8 +255,38 @@ export default function ProjectsList({
           </p>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Controls & View Switcher */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* View Mode Toggle: Table / Grid */}
+          <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'table'
+                  ? 'bg-zinc-800 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Table View"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Table</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                viewMode === 'grid'
+                  ? 'bg-zinc-800 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Grid</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleRefresh}
@@ -242,7 +326,7 @@ export default function ProjectsList({
           <button
             type="button"
             onClick={() => fetchProjects(pagination.page)}
-            className="underline underline-offset-2 hover:text-white font-medium"
+            className="underline underline-offset-2 hover:text-white font-medium cursor-pointer"
           >
             Retry
           </button>
@@ -262,7 +346,7 @@ export default function ProjectsList({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by title, slug, tag..."
+              placeholder="Search by title, slug, tags..."
               className="w-full pl-9 pr-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
             />
           </div>
@@ -273,7 +357,7 @@ export default function ProjectsList({
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               aria-label="Filter by status"
-              className="w-full px-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer"
+              className="w-full px-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer font-medium"
             >
               <option value="all">All Statuses</option>
               <option value="published">Published</option>
@@ -288,7 +372,7 @@ export default function ProjectsList({
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               aria-label="Filter by category"
-              className="w-full px-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer"
+              className="w-full px-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer font-medium"
             >
               <option value="all">All Categories</option>
               {categories.map((cat) => (
@@ -311,6 +395,7 @@ export default function ProjectsList({
               <option value="created_at">Sort: Created Date</option>
               <option value="updated_at">Sort: Updated Date</option>
               <option value="title">Sort: Title</option>
+              <option value="year">Sort: Year</option>
             </select>
 
             <button
@@ -334,7 +419,7 @@ export default function ProjectsList({
               onChange={(e) => setFeaturedOnly(e.target.checked)}
               className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-0 accent-white cursor-pointer"
             />
-            <span className="text-zinc-400 flex items-center gap-1.5">
+            <span className="text-zinc-400 flex items-center gap-1.5 font-medium">
               <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
               Show featured projects only
             </span>
@@ -346,7 +431,7 @@ export default function ProjectsList({
         </div>
       </div>
 
-      {/* 4. Projects Table */}
+      {/* 4. Projects Container: Table or Grid */}
       <div className="p-4 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 overflow-hidden">
         {isLoading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-zinc-400">
@@ -371,7 +456,8 @@ export default function ProjectsList({
               <span>Create Project</span>
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'table' ? (
+          /* Table View */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 pb-3">
@@ -386,170 +472,366 @@ export default function ProjectsList({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                {projects.map((project) => (
-                  <tr
-                    key={project.id}
-                    className="hover:bg-zinc-900/40 transition-colors group"
-                  >
-                    {/* Featured Star Toggle */}
-                    <td className="py-3.5 pr-2 text-center">
+                {projects.map((project) => {
+                  const imageSrc = project.featured_image || project.thumbnail_image || project.cover_image
+                  const categoryName = project.category_detail?.name || project.category || '—'
+                  const techList =
+                    project.technologies_list && project.technologies_list.length > 0
+                      ? project.technologies_list.map((t) => t.name)
+                      : project.technologies || []
+
+                  return (
+                    <tr
+                      key={project.id}
+                      className="hover:bg-zinc-900/40 transition-colors group"
+                    >
+                      {/* Featured Star Toggle */}
+                      <td className="py-3.5 pr-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFeatured(project)}
+                          className="p-1 rounded-lg text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer"
+                          title={project.is_featured ? 'Featured on homepage' : 'Mark as featured'}
+                        >
+                          <Star
+                            className={`w-4 h-4 ${
+                              project.is_featured
+                                ? 'text-amber-400 fill-amber-400'
+                                : 'text-zinc-600 hover:text-zinc-400'
+                            }`}
+                          />
+                        </button>
+                      </td>
+
+                      {/* Project Title, Cover Preview & Year */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3 min-w-[220px]">
+                          {/* Thumbnail */}
+                          <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                            {imageSrc ? (
+                              <img
+                                src={getProjectImageUrl(imageSrc)}
+                                alt={project.title}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <Briefcase className="w-4 h-4 text-zinc-600" />
+                            )}
+                          </div>
+
+                          {/* Title, Year, and Slug */}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-zinc-100 group-hover:text-white transition-colors block truncate max-w-[200px]">
+                                {project.title}
+                              </span>
+                              {project.year ? (
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                                  {project.year}
+                                </span>
+                              ) : null}
+                            </div>
+                            <span className="text-[10px] text-zinc-500 font-mono block truncate max-w-[180px]">
+                              /{project.slug}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Category */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 font-medium text-[11px]">
+                          <Layers className="w-3 h-3 text-cyan-400" />
+                          <span>{categoryName}</span>
+                        </span>
+                      </td>
+
+                      {/* Technologies Tags */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 flex-wrap max-w-xs">
+                          {techList.length > 0 ? (
+                            techList.slice(0, 3).map((tech, i) => (
+                              <span
+                                key={i}
+                                className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-medium whitespace-nowrap"
+                              >
+                                {tech}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-zinc-600 text-[11px]">—</span>
+                          )}
+                          {techList.length > 3 && (
+                            <span className="text-[10px] text-zinc-500 font-medium">
+                              +{techList.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status Dropdown Pill */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="relative inline-block">
+                          <select
+                            value={project.status}
+                            disabled={updatingStatusId === project.id}
+                            aria-label={`Update status for ${project.title}`}
+                            onChange={(e) =>
+                              handleStatusChange(
+                                project,
+                                e.target.value as 'draft' | 'published' | 'archived'
+                              )
+                            }
+                            className={`text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border focus:outline-none cursor-pointer appearance-none ${
+                              project.status === 'published'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : project.status === 'draft'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                            }`}
+                          >
+                            <option value="published" className="bg-zinc-900 text-emerald-400">
+                              Published
+                            </option>
+                            <option value="draft" className="bg-zinc-900 text-amber-400">
+                              Draft
+                            </option>
+                            <option value="archived" className="bg-zinc-900 text-zinc-400">
+                              Archived
+                            </option>
+                          </select>
+                        </div>
+                      </td>
+
+                      {/* Display Order */}
+                      <td className="py-3.5 px-4 text-center font-mono text-zinc-400">
+                        #{project.display_order ?? 0}
+                      </td>
+
+                      {/* Action Buttons */}
+                      <td className="py-3.5 pl-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* View Modal Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleView(project)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                            title="View project details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* External link */}
+                          {(project.project_url || project.live_url) && (
+                            <a
+                              href={project.project_url || project.live_url || '#'}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                              title="Open live URL"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+
+                          {/* Edit Button */}
+                          <button
+                            type="button"
+                            onClick={() => onEditProject(project.id)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                            title="Edit project"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            type="button"
+                            onClick={() => setProjectToDelete(project)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-950/30 transition-colors cursor-pointer"
+                            title="Delete project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* Grid Card View */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => {
+              const imageSrc = project.featured_image || project.thumbnail_image || project.cover_image
+              const categoryName = project.category_detail?.name || project.category || 'General'
+              const techList =
+                project.technologies_list && project.technologies_list.length > 0
+                  ? project.technologies_list.map((t) => t.name)
+                  : project.technologies || []
+
+              return (
+                <div
+                  key={project.id}
+                  className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex flex-col justify-between overflow-hidden group shadow-xs"
+                >
+                  {/* Card Media Header */}
+                  <div className="relative aspect-video w-full bg-zinc-950 overflow-hidden flex items-center justify-center border-b border-zinc-800/80">
+                    {imageSrc ? (
+                      <img
+                        src={getProjectImageUrl(imageSrc)}
+                        alt={project.title}
+                        className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-1.5 text-zinc-600">
+                        <Briefcase className="w-8 h-8" />
+                        <span className="text-[10px]">No image uploaded</span>
+                      </div>
+                    )}
+
+                    {/* Top Badges Overlay */}
+                    <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/80 backdrop-blur-md text-zinc-200 border border-zinc-700/60 shadow-xs flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-cyan-400" />
+                          <span>{categoryName}</span>
+                        </span>
+                        {project.year ? (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/80 backdrop-blur-md text-zinc-300 border border-zinc-700/60 shadow-xs">
+                            {project.year}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Featured button */}
                       <button
                         type="button"
-                        onClick={() => handleToggleFeatured(project)}
-                        className="p-1 rounded-lg text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleFeatured(project)
+                        }}
+                        className="pointer-events-auto p-1.5 rounded-full bg-black/80 hover:bg-black text-zinc-400 hover:text-amber-400 border border-zinc-700/60 transition-colors shadow-xs cursor-pointer"
                         title={project.is_featured ? 'Featured on homepage' : 'Mark as featured'}
                       >
                         <Star
-                          className={`w-4 h-4 ${
-                            project.is_featured
-                              ? 'text-amber-400 fill-amber-400'
-                              : 'text-zinc-600 hover:text-zinc-400'
+                          className={`w-3.5 h-3.5 ${
+                            project.is_featured ? 'text-amber-400 fill-amber-400' : ''
                           }`}
                         />
                       </button>
-                    </td>
+                    </div>
 
-                    {/* Project Title & Cover Preview */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3 min-w-[200px]">
-                        {/* Thumbnail */}
-                        <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
-                          {(project.featured_image || project.cover_image) ? (
-                            <img
-                              src={getProjectImageUrl(project.featured_image || project.cover_image)}
-                              alt={project.title}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
-                            />
-                          ) : (
-                            <Briefcase className="w-4 h-4 text-zinc-600" />
-                          )}
-                        </div>
-
-                        {/* Title and Slug */}
-                        <div className="min-w-0">
-                          <span className="font-semibold text-zinc-100 group-hover:text-white transition-colors block truncate max-w-[220px]">
-                            {project.title}
-                          </span>
-                          <span className="text-[10px] text-zinc-500 font-mono block truncate max-w-[200px]">
-                            /{project.slug}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Category */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span className="text-zinc-300 font-medium">
-                        {project.category || '—'}
+                    {/* Status Badge (Bottom Left) */}
+                    <div className="absolute bottom-2.5 left-2.5 pointer-events-none">
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border backdrop-blur-md shadow-xs ${
+                          project.status === 'published'
+                            ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                            : project.status === 'draft'
+                            ? 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                            : 'bg-zinc-900/80 text-zinc-400 border-zinc-700'
+                        }`}
+                      >
+                        {project.status}
                       </span>
-                    </td>
+                    </div>
+                  </div>
 
-                    {/* Technologies Tags */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-1.5 flex-wrap max-w-xs">
-                        {project.technologies && project.technologies.length > 0 ? (
-                          project.technologies.slice(0, 3).map((tech, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-medium whitespace-nowrap"
-                            >
-                              {tech}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-zinc-600 text-[11px]">—</span>
-                        )}
-                        {project.technologies && project.technologies.length > 3 && (
-                          <span className="text-[10px] text-zinc-500">
-                            +{project.technologies.length - 3}
+                  {/* Card Content */}
+                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white group-hover:text-cyan-400 transition-colors line-clamp-1">
+                        {project.title}
+                      </h3>
+                      <span className="text-[10px] font-mono text-zinc-500 block truncate mt-0.5">
+                        /{project.slug}
+                      </span>
+                      {project.short_description ? (
+                        <p className="text-xs text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
+                          {project.short_description}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Technologies */}
+                    {techList.length > 0 && (
+                      <div className="pt-2 flex flex-wrap gap-1">
+                        {techList.slice(0, 4).map((tech, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-medium"
+                          >
+                            {tech}
+                          </span>
+                        ))}
+                        {techList.length > 4 && (
+                          <span className="text-[10px] text-zinc-500 font-medium self-center">
+                            +{techList.length - 4}
                           </span>
                         )}
                       </div>
-                    </td>
+                    )}
+                  </div>
 
-                    {/* Status Dropdown Pill */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="relative inline-block">
-                        <select
-                          value={project.status}
-                          disabled={updatingStatusId === project.id}
-                          aria-label={`Update status for ${project.title}`}
-                          onChange={(e) =>
-                            handleStatusChange(
-                              project,
-                              e.target.value as 'draft' | 'published' | 'archived'
-                            )
-                          }
-                          className={`text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border focus:outline-none cursor-pointer appearance-none ${
-                            project.status === 'published'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              : project.status === 'draft'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                          }`}
+                  {/* Card Action Bar Footer */}
+                  <div className="p-3 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      Order: #{project.display_order ?? 0}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSingleView(project)}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                        title="View project details"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+
+                      {(project.project_url || project.live_url) && (
+                        <a
+                          href={project.project_url || project.live_url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                          title="Open live URL"
                         >
-                          <option value="published" className="bg-zinc-900 text-emerald-400">
-                            Published
-                          </option>
-                          <option value="draft" className="bg-zinc-900 text-amber-400">
-                            Draft
-                          </option>
-                          <option value="archived" className="bg-zinc-900 text-zinc-400">
-                            Archived
-                          </option>
-                        </select>
-                      </div>
-                    </td>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
 
-                    {/* Display Order */}
-                    <td className="py-3.5 px-4 text-center font-mono text-zinc-400">
-                      #{project.display_order ?? 0}
-                    </td>
+                      <button
+                        type="button"
+                        onClick={() => onEditProject(project.id)}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                        title="Edit project"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
 
-                    {/* Action Buttons */}
-                    <td className="py-3.5 pl-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* External link */}
-                        {(project.project_url || project.live_url) && (
-                          <a
-                            href={project.project_url || project.live_url || '#'}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-                            title="Open live URL"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-
-                        {/* Edit Button */}
-                        <button
-                          type="button"
-                          onClick={() => onEditProject(project.id)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                          title="Edit project"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-
-                        {/* Delete Button */}
-                        <button
-                          type="button"
-                          onClick={() => setProjectToDelete(project)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-950/30 transition-colors cursor-pointer"
-                          title="Delete project"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <button
+                        type="button"
+                        onClick={() => setProjectToDelete(project)}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/40 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+                        title="Delete project"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -602,7 +884,345 @@ export default function ProjectsList({
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* 6. Single Project Details Modal */}
+      {viewingProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150 font-sans">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-white">Project Details</h2>
+                    <span className="font-mono text-[10px] text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                      ID #{viewingProject.id}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-zinc-500 font-mono">
+                    /{viewingProject.slug}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingProject(null)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="p-5 sm:p-6 space-y-5 overflow-y-auto">
+              
+              {isLoadingSingle && (
+                <div className="py-2 px-3 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center gap-2 text-xs text-zinc-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                  <span>Loading full project details...</span>
+                </div>
+              )}
+
+              {singleViewError && (
+                <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 flex items-center gap-2 text-xs text-red-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{singleViewError}</span>
+                </div>
+              )}
+
+              {/* Cover Banner Preview */}
+              {(viewingProject.featured_image || viewingProject.banner_image || viewingProject.cover_image) && (
+                <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-zinc-800">
+                  <img
+                    src={getProjectImageUrl(
+                      viewingProject.banner_image ||
+                        viewingProject.featured_image ||
+                        viewingProject.cover_image
+                    )}
+                    alt={viewingProject.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                    {viewingProject.is_featured && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-black flex items-center gap-1 shadow-sm">
+                        <Sparkles className="w-3 h-3 fill-black" />
+                        <span>Featured</span>
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm ${
+                        viewingProject.status === 'published'
+                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                          : viewingProject.status === 'draft'
+                          ? 'bg-amber-950/80 text-amber-400 border-amber-500/40'
+                          : 'bg-zinc-900/80 text-zinc-400 border-zinc-700'
+                      }`}
+                    >
+                      {viewingProject.status}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Title & Core Meta */}
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-lg font-bold text-white tracking-tight">
+                    {viewingProject.title}
+                  </h3>
+                  {viewingProject.year && (
+                    <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300">
+                      Year: {viewingProject.year}
+                    </span>
+                  )}
+                </div>
+
+                {viewingProject.short_description && (
+                  <p className="text-xs text-zinc-300 leading-relaxed">
+                    {viewingProject.short_description}
+                  </p>
+                )}
+              </div>
+
+              {/* Attributes Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                
+                {/* Category */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Category
+                  </span>
+                  <span className="text-cyan-400 font-semibold mt-1 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>{viewingProject.category_detail?.name || viewingProject.category || 'General'}</span>
+                  </span>
+                </div>
+
+                {/* Role */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Role
+                  </span>
+                  <span className="text-zinc-200 font-medium mt-1 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>{viewingProject.role || '—'}</span>
+                  </span>
+                </div>
+
+                {/* Project Type */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Project Type
+                  </span>
+                  <span className="text-zinc-200 font-medium mt-1 block">
+                    {viewingProject.project_type || '—'}
+                  </span>
+                </div>
+
+                {/* Client / Organization */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Client Name
+                  </span>
+                  <span className="text-zinc-200 font-medium mt-1 block">
+                    {viewingProject.client_name || '—'}
+                  </span>
+                </div>
+
+                {/* Display Order */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Display Order
+                  </span>
+                  <span className="font-mono text-zinc-200 font-semibold mt-1 block">
+                    #{viewingProject.display_order ?? 0}
+                  </span>
+                </div>
+
+                {/* Status */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Status
+                  </span>
+                  <span className="font-semibold capitalize mt-1 block text-emerald-400">
+                    {viewingProject.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Technologies List */}
+              <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/70 space-y-2">
+                <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Technologies & Stack</span>
+                </span>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(viewingProject.technologies_list && viewingProject.technologies_list.length > 0
+                    ? viewingProject.technologies_list.map((t) => t.name)
+                    : viewingProject.technologies || []
+                  ).map((tech, i) => (
+                    <span
+                      key={i}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-medium"
+                    >
+                      {tech}
+                    </span>
+                  ))}
+                  {(!viewingProject.technologies || viewingProject.technologies.length === 0) && (
+                    <span className="text-xs text-zinc-500">No technologies attached</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Full Description */}
+              {viewingProject.description && (
+                <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/70 space-y-2">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Case Study Description
+                  </span>
+                  <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">
+                    {viewingProject.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Links (Live URL & Repository) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Live URL */}
+                <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800 flex items-center justify-between">
+                  <div className="min-w-0 pr-2">
+                    <span className="text-[10px] uppercase font-semibold text-zinc-500 block">
+                      Live URL
+                    </span>
+                    <span className="font-mono text-zinc-200 truncate block mt-0.5">
+                      {viewingProject.project_url || viewingProject.live_url || '—'}
+                    </span>
+                  </div>
+                  {(viewingProject.project_url || viewingProject.live_url) && (
+                    <a
+                      href={viewingProject.project_url || viewingProject.live_url!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 rounded-lg bg-white text-zinc-950 hover:bg-zinc-200 transition-colors flex-shrink-0 cursor-pointer"
+                      title="Visit live site"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+
+                {/* Repository URL */}
+                <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800 flex items-center justify-between">
+                  <div className="min-w-0 pr-2">
+                    <span className="text-[10px] uppercase font-semibold text-zinc-500 block">
+                      Repository URL
+                    </span>
+                    <span className="font-mono text-zinc-200 truncate block mt-0.5">
+                      {viewingProject.repository_url || viewingProject.github_url || '—'}
+                    </span>
+                  </div>
+                  {(viewingProject.repository_url || viewingProject.github_url) && (
+                    <a
+                      href={viewingProject.repository_url || viewingProject.github_url!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white transition-colors flex-shrink-0 cursor-pointer"
+                      title="Open repository"
+                    >
+                      <Code2 className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* SEO Preview */}
+              {(viewingProject.meta_title || viewingProject.meta_description || viewingProject.canonical_url) && (
+                <div className="p-4 rounded-xl bg-zinc-900/20 border border-zinc-800 space-y-2">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>SEO Meta Information</span>
+                  </span>
+                  {viewingProject.meta_title && (
+                    <div className="text-xs">
+                      <span className="text-zinc-500">Meta Title:</span>{' '}
+                      <span className="text-zinc-200 font-medium">{viewingProject.meta_title}</span>
+                    </div>
+                  )}
+                  {viewingProject.meta_description && (
+                    <div className="text-xs">
+                      <span className="text-zinc-500">Meta Description:</span>{' '}
+                      <span className="text-zinc-300">{viewingProject.meta_description}</span>
+                    </div>
+                  )}
+                  {viewingProject.canonical_url && (
+                    <div className="text-xs">
+                      <span className="text-zinc-500">Canonical:</span>{' '}
+                      <span className="text-zinc-400 font-mono text-[11px]">{viewingProject.canonical_url}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="pt-2 border-t border-zinc-900 grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] text-zinc-400">
+                <div>
+                  <span className="text-zinc-500 block">Created At:</span>
+                  <span className="text-zinc-300 flex items-center gap-1 mt-0.5">
+                    <Calendar className="w-3 h-3 text-zinc-500" />
+                    <span>{formatDate(viewingProject.created_at)}</span>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">Published At:</span>
+                  <span className="text-zinc-300 flex items-center gap-1 mt-0.5">
+                    <Clock className="w-3 h-3 text-zinc-500" />
+                    <span>{formatDate(viewingProject.published_at)}</span>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">Last Updated:</span>
+                  <span className="text-zinc-300 flex items-center gap-1 mt-0.5">
+                    <Clock className="w-3 h-3 text-zinc-500" />
+                    <span>{formatDate(viewingProject.updated_at)}</span>
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 bg-zinc-950 border-t border-zinc-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setViewingProject(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = viewingProject.id
+                  setViewingProject(null)
+                  onEditProject(id)
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit Project</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 7. Delete Confirmation Modal */}
       {projectToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
           <div className="w-full max-w-md p-6 rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl space-y-4 font-sans animate-in fade-in zoom-in-95 duration-200">
