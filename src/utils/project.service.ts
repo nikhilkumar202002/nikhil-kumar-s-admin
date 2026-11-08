@@ -193,13 +193,39 @@ interface ApiResponse<T> {
  */
 export const getProjectImageUrl = (url?: string | null): string => {
   if (!url) return ''
+  // 1. Direct blob or data URLs (from local file selection or canvas)
+  if (url.startsWith('blob:') || url.startsWith('data:')) {
+    return url
+  }
+  // 2. Localhost or 127.0.0.1 URLs -> map to BASE_SERVER_URL
   if (url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:')) {
     return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):\d+/, BASE_SERVER_URL)
   }
+  // 3. Upgrade insecure http://api.nikhilkumars.com to https:// to prevent mixed-content blocks
+  if (url.startsWith('http://api.nikhilkumars.com')) {
+    return url.replace('http://api.nikhilkumars.com', 'https://api.nikhilkumars.com')
+  }
+  // 4. Any full http/https URL
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url
   }
+  // 5. Relative upload path -> prefix BASE_SERVER_URL
   return `${BASE_SERVER_URL}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+/**
+ * Extracts the best available image URL from any ProjectImage object
+ */
+export const getImageUrlFromObject = (img?: ProjectImage | null): string => {
+  if (!img) return ''
+  const raw =
+    img.image_url ||
+    img.url ||
+    img.exact_link ||
+    img.image_path ||
+    img.relative_path ||
+    ''
+  return getProjectImageUrl(raw)
 }
 
 /**
