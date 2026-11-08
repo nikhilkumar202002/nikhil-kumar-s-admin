@@ -70,8 +70,6 @@ export default function ProjectForm({
   const [liveUrl, setLiveUrl] = useState('')
   const [githubUrl, setGithubUrl] = useState('')
   const [canonicalUrl, setCanonicalUrl] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
   const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('published')
   const [isFeatured, setIsFeatured] = useState(false)
   const [displayOrder, setDisplayOrder] = useState<number>(0)
@@ -167,8 +165,6 @@ export default function ProjectForm({
         setLiveUrl(proj.project_url || proj.live_url || '')
         setGithubUrl(proj.repository_url || proj.github_url || '')
         setCanonicalUrl(proj.canonical_url || '')
-        setStartDate(proj.start_date ? proj.start_date.slice(0, 10) : '')
-        setEndDate(proj.end_date ? proj.end_date.slice(0, 10) : '')
         setStatus(proj.status || 'published')
         setIsFeatured(Boolean(proj.is_featured))
         setDisplayOrder(proj.display_order ?? 0)
@@ -371,8 +367,6 @@ export default function ProjectForm({
       form.append('display_order', String(displayOrder))
 
       if (slug.trim()) form.append('slug', slug.trim())
-      if (startDate) form.append('start_date', startDate)
-      if (endDate) form.append('end_date', endDate)
 
       if (isEditMode && projectId) {
         await projectService.update(projectId, form)
@@ -897,30 +891,6 @@ export default function ProjectForm({
                 onChange={(e) => setGithubUrl(e.target.value)}
                 placeholder="https://github.com/nikhil/repo"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Start Date
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                End / Completion Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer"
               />
             </div>
           </div>
