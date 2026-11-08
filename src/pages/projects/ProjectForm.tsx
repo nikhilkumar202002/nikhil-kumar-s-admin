@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import projectService, {
   type Project,
   type ProjectImage,
-  type CreateProjectPayload,
-  type UpdateProjectPayload,
+  getProjectImageUrl,
 } from '../../utils/project.service'
-import { BASE_SERVER_URL } from '../../utils/axios.service'
+import categoryService, { type Category } from '../../utils/category.service'
+import technologyService, { type Technology } from '../../utils/technology.service'
 import {
   ArrowLeft,
   Save,
@@ -15,9 +15,13 @@ import {
   Upload,
   Trash2,
   Star,
-  Image,
+  Image as ImageIcon,
   LayoutTemplate,
   X,
+  Plus,
+  Calendar,
+  Layers,
+  Cpu,
 } from 'lucide-react'
 
 interface ProjectFormProps {
@@ -43,9 +47,21 @@ export default function ProjectForm({
   // Form Fields
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
+  const [year, setYear] = useState<string>(() => new Date().getFullYear().toString())
   const [shortDescription, setShortDescription] = useState('')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('')
+  
+  // Category state (linked to Category model: id & name)
+  const [categoryId, setCategoryId] = useState<number | string>('')
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([])
+  
+  // Technology state (linked to Technology model: id & name)
+  const [selectedTechIds, setSelectedTechIds] = useState<number[]>([])
+  const [availableTechnologies, setAvailableTechnologies] = useState<Technology[]>([])
+  const [newTechName, setNewTechName] = useState('')
+  const [isCreatingTech, setIsCreatingTech] = useState(false)
+
+  // Details
   const [projectType, setProjectType] = useState('')
   const [clientName, setClientName] = useState('')
   const [role, setRole] = useState('')
@@ -54,7 +70,7 @@ export default function ProjectForm({
   const [canonicalUrl, setCanonicalUrl] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft')
+  const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('published')
   const [isFeatured, setIsFeatured] = useState(false)
   const [displayOrder, setDisplayOrder] = useState<number>(0)
   const [metaTitle, setMetaTitle] = useState('')
@@ -62,22 +78,18 @@ export default function ProjectForm({
 
   // 1. Featured Image (Card / Thumbnail)
   const [featuredImageUrl, setFeaturedImageUrl] = useState('')
-  const [featuredImageFile] = useState<File | null>(null)
+  const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null)
 
   // 2. Banner Image (Hero Header)
   const [bannerImageUrl, setBannerImageUrl] = useState('')
-  const [bannerImageFile] = useState<File | null>(null)
+  const [bannerImageFile, setBannerImageFile] = useState<File | null>(null)
 
-  // Technologies
-  const [technologies, setTechnologies] = useState<string[]>([])
-  const [techInput, setTechInput] = useState('')
-  const [availableTechs, setAvailableTechs] = useState<string[]>([])
-  const [availableCategories, setAvailableCategories] = useState<string[]>([])
-
-  // Project Gallery (Edit mode only)
+  // Project Gallery & Uploads
   const [galleryImages, setGalleryImages] = useState<ProjectImage[]>([])
   const [isUploadingGallery, setIsUploadingGallery] = useState(false)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+  const featuredInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-generate slug from title
   const handleTitleChange = (val: string) => {
@@ -93,6 +105,19 @@ export default function ProjectForm({
     }
   }
 
+  // Fetch Categories & Technologies on mount
+  useEffect(() => {
+    categoryService
+      .getAll()
+      .then((cats) => setAvailableCategories(cats))
+      .catch(() => {})
+
+    technologyService
+      .getAll()
+      .then((techs) => setAvailableTechnologies(techs))
+      .catch(() => {})
+  }, [])
+
   // Fetch initial project data for Edit Mode
   useEffect(() => {
     if (!projectId) return
@@ -105,9 +130,31 @@ export default function ProjectForm({
       .then((proj: Project) => {
         setTitle(proj.title || '')
         setSlug(proj.slug || '')
+        setYear(proj.year !== undefined && proj.year !== null ? String(proj.year) : new Date().getFullYear().toString())
         setShortDescription(proj.short_description || '')
         setDescription(proj.description || '')
-        setCategory(proj.category || '')
+        
+        // Match category_id
+        if (proj.category_id) {
+          setCategoryId(proj.category_id)
+        } else if (proj.category_detail?.id) {
+          setCategoryId(proj.category_detail.id)
+        }
+
+        // Match technology_ids
+        if (Array.isArray(proj.technology_ids)) {
+          setSelectedTechIds(proj.technology_ids.map(Number).filter((n) => !isNaN(n)))
+        } else if (typeof proj.technology_ids === 'string' && proj.technology_ids.trim()) {
+          setSelectedTechIds(
+            proj.technology_ids
+              .split(',')
+              .map((id) => Number(id.trim()))
+              .filter((n) => !isNaN(n))
+          )
+        } else if (Array.isArray(proj.technologies_list)) {
+          setSelectedTechIds(proj.technologies_list.map((t) => t.id).filter(Boolean))
+        }
+
         setProjectType(proj.project_type || '')
         setClientName(proj.client_name || '')
         setRole(proj.role || '')
@@ -116,15 +163,17 @@ export default function ProjectForm({
         setCanonicalUrl(proj.canonical_url || '')
         setStartDate(proj.start_date ? proj.start_date.slice(0, 10) : '')
         setEndDate(proj.end_date ? proj.end_date.slice(0, 10) : '')
-        setStatus(proj.status || 'draft')
+        setStatus(proj.status || 'published')
         setIsFeatured(Boolean(proj.is_featured))
         setDisplayOrder(proj.display_order ?? 0)
         setMetaTitle(proj.meta_title || '')
         setMetaDescription(proj.meta_description || '')
         setFeaturedImageUrl(proj.featured_image || proj.cover_image || '')
         setBannerImageUrl(proj.banner_image || '')
-        setTechnologies(proj.technologies || [])
-        setGalleryImages(proj.gallery_images || proj.images || [])
+
+        // Combine all images
+        const imgs = proj.images || proj.gallery_images || []
+        setGalleryImages(imgs)
       })
       .catch((err: unknown) => {
         const errorObj = err as { message?: string }
@@ -135,166 +184,114 @@ export default function ProjectForm({
       })
   }, [projectId])
 
-  // Fetch available categories and technologies for suggestions
-  useEffect(() => {
-    projectService
-      .getCategories()
-      .then((c) => setAvailableCategories(c))
-      .catch(() => {})
+  // Toggle technology selection
+  const handleToggleTech = (techId: number) => {
+    setSelectedTechIds((prev) =>
+      prev.includes(techId) ? prev.filter((id) => id !== techId) : [...prev, techId]
+    )
+  }
 
-    projectService
-      .getTechnologies()
-      .then((t) => setAvailableTechs(t))
-      .catch(() => {})
-  }, [])
-
-  // Add technology tag
-  const addTechnology = (tech: string) => {
-    const trimmed = tech.trim()
+  // Create a new technology inline if not in the catalog
+  const handleCreateNewTech = async () => {
+    const trimmed = newTechName.trim()
     if (!trimmed) return
-    if (!technologies.includes(trimmed)) {
-      setTechnologies([...technologies, trimmed])
+
+    setIsCreatingTech(true)
+    try {
+      const created = await technologyService.create({ name: trimmed })
+      setAvailableTechnologies((prev) => [...prev, created])
+      setSelectedTechIds((prev) => [...prev, created.id])
+      setNewTechName('')
+      setSuccessBanner(`Technology "${created.name}" created and selected!`)
+      setTimeout(() => setSuccessBanner(''), 3000)
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string }
+      setErrorMessage(errorObj.message || 'Failed to create technology')
+    } finally {
+      setIsCreatingTech(false)
     }
-    setTechInput('')
   }
 
-  // Remove technology tag
-  const removeTechnology = (techToRemove: string) => {
-    setTechnologies(technologies.filter((t) => t !== techToRemove))
-  }
-
-  // Gallery Image Upload (Edit Mode) with role flag support
-  const handleGalleryUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    roleType: 'gallery' | 'featured' | 'banner' = 'gallery'
-  ) => {
-    const file = e.target.files?.[0]
-    if (!file || !projectId) return
+  // Upload Media Files using POST /projects/upload
+  const handleImagesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
     setIsUploadingGallery(true)
     setErrorMessage('')
 
     try {
-      const meta = {
-        type: roleType,
-        is_banner: roleType === 'banner',
-        is_featured: roleType === 'featured',
-        is_cover: roleType === 'featured',
+      const filesArray = Array.from(files)
+      const uploadedImages = await projectService.uploadMedia(filesArray)
+
+      setGalleryImages((prev) => [...prev, ...uploadedImages])
+
+      // Auto-assign featured and banner if not yet set
+      if (!featuredImageUrl && uploadedImages.length > 0) {
+        setFeaturedImageUrl(uploadedImages[0].image_url)
       }
-      const uploaded = await projectService.uploadImage(projectId, file, meta)
-      setGalleryImages((prev) => [
-        ...prev.map((img) => ({
-          ...img,
-          ...(roleType === 'banner' ? { is_banner: false } : {}),
-          ...(roleType === 'featured' ? { is_featured: false, is_cover: false } : {}),
-        })),
-        uploaded,
-      ])
-      if (roleType === 'featured') {
-        setFeaturedImageUrl(uploaded.image_url)
-      } else if (roleType === 'banner') {
-        setBannerImageUrl(uploaded.image_url)
+      if (!bannerImageUrl && uploadedImages.length > 1) {
+        setBannerImageUrl(uploadedImages[1].image_url)
       }
+
       setSuccessBanner(
-        roleType === 'featured'
-          ? 'Featured card image uploaded successfully!'
-          : roleType === 'banner'
-          ? 'Hero banner image uploaded successfully!'
-          : 'Image added to project gallery!'
+        `${uploadedImages.length} image(s) uploaded successfully!`
       )
       setTimeout(() => setSuccessBanner(''), 4000)
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
-      setErrorMessage(errorObj.message || 'Failed to upload image')
+      setErrorMessage(errorObj.message || 'Failed to upload image(s)')
     } finally {
       setIsUploadingGallery(false)
       if (galleryInputRef.current) galleryInputRef.current.value = ''
     }
   }
 
-  // Promote Gallery Image to Featured Card Image (PATCH /featured)
-  const handleSetFeatured = async (imageId: number) => {
-    if (!projectId) return
-
-    try {
-      await projectService.setFeaturedImage(projectId, imageId)
-      setGalleryImages((prev) =>
-        prev.map((img) => ({
-          ...img,
-          is_cover: img.id === imageId,
-          is_featured: img.id === imageId,
-        }))
-      )
-      const feat = galleryImages.find((img) => img.id === imageId)
-      if (feat) setFeaturedImageUrl(feat.image_url)
-      setSuccessBanner('Image promoted to featured card image successfully!')
-      setTimeout(() => setSuccessBanner(''), 4000)
-    } catch (err: unknown) {
-      const errorObj = err as { message?: string }
-      setErrorMessage(errorObj.message || 'Failed to promote to featured image')
-    }
+  // Dedicated Featured Image File Handler
+  const handleFeaturedFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFeaturedImageFile(file)
+    setFeaturedImageUrl(URL.createObjectURL(file))
   }
 
-  // Promote Gallery Image to Banner Image (PATCH /banner)
-  const handleSetBanner = async (imageId: number) => {
-    if (!projectId) return
-
-    try {
-      await projectService.setBannerImage(projectId, imageId)
-      setGalleryImages((prev) =>
-        prev.map((img) => ({ ...img, is_banner: img.id === imageId }))
-      )
-      const banner = galleryImages.find((img) => img.id === imageId)
-      if (banner) setBannerImageUrl(banner.image_url)
-      setSuccessBanner('Image promoted to hero banner image successfully!')
-      setTimeout(() => setSuccessBanner(''), 4000)
-    } catch (err: unknown) {
-      const errorObj = err as { message?: string }
-      setErrorMessage(errorObj.message || 'Failed to promote to banner image')
-    }
+  // Dedicated Banner Image File Handler
+  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBannerImageFile(file)
+    setBannerImageUrl(URL.createObjectURL(file))
   }
 
-  // Delete Gallery Image
-  const handleDeleteGalleryImage = async (imageId: number) => {
-    if (!projectId) return
-
-    try {
-      await projectService.deleteImage(projectId, imageId)
-      setGalleryImages((prev) => prev.filter((img) => img.id !== imageId))
-      setSuccessBanner('Image deleted from gallery')
-      setTimeout(() => setSuccessBanner(''), 4000)
-    } catch (err: unknown) {
-      const errorObj = err as { message?: string }
-      setErrorMessage(errorObj.message || 'Failed to delete gallery image')
-    }
-  }
-
-  // Image Upload handler for gallery
-  const handleImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleGalleryUpload(e)
-  }
-
-  // Delete uploaded image
-  const handleDeleteUploadedImage = (img: ProjectImage) => {
-    handleDeleteGalleryImage(img.id)
-  }
-
-  // Select as featured card image
+  // Select gallery item as featured
   const handleSelectAsFeatured = (img: ProjectImage) => {
-    if (projectId) {
-      handleSetFeatured(img.id)
-    } else {
-      setFeaturedImageUrl(img.image_url)
-    }
+    setFeaturedImageUrl(img.image_url)
+    setFeaturedImageFile(null)
+    setSuccessBanner('Featured card image selected')
+    setTimeout(() => setSuccessBanner(''), 2500)
   }
 
-  // Select as cover / banner image
+  // Select gallery item as cover/banner
   const handleSelectAsCover = (img: ProjectImage) => {
-    if (projectId) {
-      handleSetBanner(img.id)
-    } else {
-      setBannerImageUrl(img.image_url)
+    setBannerImageUrl(img.image_url)
+    setBannerImageFile(null)
+    setSuccessBanner('Cover banner image selected')
+    setTimeout(() => setSuccessBanner(''), 2500)
+  }
+
+  // Delete gallery item
+  const handleDeleteUploadedImage = async (img: ProjectImage) => {
+    if (img.image_url === featuredImageUrl) setFeaturedImageUrl('')
+    if (img.image_url === bannerImageUrl) setBannerImageUrl('')
+
+    if (projectId && typeof img.id === 'number') {
+      try {
+        await projectService.deleteImage(projectId, img.id)
+      } catch {
+        // continue local removal
+      }
     }
+    setGalleryImages((prev) => prev.filter((item) => item.image_url !== img.image_url))
   }
 
   // Submit Handler
@@ -303,7 +300,6 @@ export default function ProjectForm({
     setErrorMessage('')
     setValidationErrors({})
 
-    // Client-side quick checks
     if (!title.trim()) {
       setValidationErrors({ title: 'Project title is required' })
       return
@@ -312,85 +308,70 @@ export default function ProjectForm({
     setIsSubmitting(true)
 
     try {
-      if (featuredImageFile || bannerImageFile) {
-        // Multipart Submission with Image Files
-        const formData = new FormData()
-        formData.append('title', title.trim())
-        if (slug.trim()) formData.append('slug', slug.trim())
-        if (shortDescription.trim())
-          formData.append('short_description', shortDescription.trim())
-        if (description.trim()) formData.append('description', description.trim())
-        if (category.trim()) formData.append('category', category.trim())
-        if (projectType.trim()) formData.append('project_type', projectType.trim())
-        if (clientName.trim()) formData.append('client_name', clientName.trim())
-        if (role.trim()) formData.append('role', role.trim())
-        if (liveUrl.trim()) formData.append('project_url', liveUrl.trim())
-        if (githubUrl.trim()) formData.append('repository_url', githubUrl.trim())
-        if (canonicalUrl.trim()) formData.append('canonical_url', canonicalUrl.trim())
-        if (startDate) formData.append('start_date', startDate)
-        if (endDate) formData.append('end_date', endDate)
-        formData.append('status', status)
-        formData.append('is_featured', String(isFeatured))
-        formData.append('display_order', String(displayOrder))
-        if (metaTitle.trim()) formData.append('meta_title', metaTitle.trim())
-        if (metaDescription.trim())
-          formData.append('meta_description', metaDescription.trim())
-        formData.append('technologies', JSON.stringify(technologies))
+      // Build FormData payload
+      const form = new FormData()
+      form.append('title', title.trim())
+      
+      if (categoryId) {
+        form.append('category_id', String(categoryId))
+      }
 
-        // 3-tier images
-        if (featuredImageFile) {
-          formData.append('featured_image', featuredImageFile)
-          formData.append('cover_image', featuredImageFile)
-        } else if (featuredImageUrl.trim()) {
-          formData.append('featured_image', featuredImageUrl.trim())
-          formData.append('cover_image', featuredImageUrl.trim())
-        }
+      if (selectedTechIds.length > 0) {
+        form.append('technology_ids', selectedTechIds.join(','))
+      }
 
-        if (bannerImageFile) {
-          formData.append('banner_image', bannerImageFile)
-        } else if (bannerImageUrl.trim()) {
-          formData.append('banner_image', bannerImageUrl.trim())
-        }
+      form.append('year', year.trim() || new Date().getFullYear().toString())
+      form.append('status', status)
+      form.append('is_featured', String(isFeatured))
 
-        if (isEditMode && projectId) {
-          await projectService.update(projectId, formData)
-        } else {
-          await projectService.create(formData)
-        }
+      // Featured / Cover Image
+      if (featuredImageFile) {
+        form.append('featured_image', featuredImageFile)
+        form.append('cover_image', featuredImageFile)
+      } else if (featuredImageUrl) {
+        form.append('featured_image', featuredImageUrl)
+        form.append('cover_image', featuredImageUrl)
       } else {
-        // Standard JSON payload
-        const payload: CreateProjectPayload = {
-          title: title.trim(),
-          slug: slug.trim() || undefined,
-          short_description: shortDescription.trim() || undefined,
-          description: description.trim() || undefined,
-          category: category.trim() || undefined,
-          project_type: projectType.trim() || undefined,
-          client_name: clientName.trim() || undefined,
-          role: role.trim() || undefined,
-          project_url: liveUrl.trim() || undefined,
-          live_url: liveUrl.trim() || undefined,
-          repository_url: githubUrl.trim() || undefined,
-          github_url: githubUrl.trim() || undefined,
-          canonical_url: canonicalUrl.trim() || undefined,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          status,
-          is_featured: isFeatured,
-          display_order: displayOrder,
-          featured_image: featuredImageUrl.trim() || undefined,
-          banner_image: bannerImageUrl.trim() || undefined,
-          cover_image: featuredImageUrl.trim() || undefined,
-          meta_title: metaTitle.trim() || undefined,
-          meta_description: metaDescription.trim() || undefined,
-          technologies,
-        }
+        form.append('featured_image', '')
+        form.append('cover_image', '')
+      }
 
-        if (isEditMode && projectId) {
-          await projectService.update(projectId, payload as UpdateProjectPayload)
-        } else {
-          await projectService.create(payload)
-        }
+      // Banner Image
+      if (bannerImageFile) {
+        form.append('banner_image', bannerImageFile)
+      } else if (bannerImageUrl) {
+        form.append('banner_image', bannerImageUrl)
+      } else {
+        form.append('banner_image', '')
+      }
+
+      // Images / Gallery
+      form.append('images', '')
+      form.append('gallery_images', '')
+
+      // Descriptions & details
+      form.append('short_description', shortDescription.trim())
+      form.append('description', description.trim())
+      form.append('client_name', clientName.trim())
+      form.append('project_url', liveUrl.trim())
+      form.append('live_url', liveUrl.trim())
+      form.append('repository_url', githubUrl.trim())
+      form.append('github_url', githubUrl.trim())
+      form.append('role', role.trim())
+      form.append('project_type', projectType.trim())
+      form.append('meta_title', metaTitle.trim())
+      form.append('meta_description', metaDescription.trim())
+      form.append('canonical_url', canonicalUrl.trim())
+      form.append('display_order', String(displayOrder))
+
+      if (slug.trim()) form.append('slug', slug.trim())
+      if (startDate) form.append('start_date', startDate)
+      if (endDate) form.append('end_date', endDate)
+
+      if (isEditMode && projectId) {
+        await projectService.update(projectId, form)
+      } else {
+        await projectService.create(form)
       }
 
       setSuccessBanner(
@@ -408,7 +389,7 @@ export default function ProjectForm({
         data?: { errors?: Array<{ field?: string; message: string }> }
       }
 
-      setErrorMessage(errorObj.message || 'Failed to save project. Please review fields.')
+      setErrorMessage(errorObj.message || 'Failed to save project. Please check fields.')
 
       if (errorObj.data?.errors) {
         const fieldErrors: Record<string, string> = {}
@@ -424,7 +405,7 @@ export default function ProjectForm({
 
   if (isLoadingProject) {
     return (
-      <div className="p-12 flex flex-col items-center justify-center gap-3 text-zinc-400">
+      <div className="p-16 flex flex-col items-center justify-center gap-3 text-zinc-400">
         <Loader2 className="w-8 h-8 animate-spin text-white" />
         <span className="text-xs">Loading project details...</span>
       </div>
@@ -451,8 +432,8 @@ export default function ProjectForm({
             </h1>
             <p className="text-xs text-zinc-400 mt-0.5">
               {isEditMode
-                ? 'Modify project information, technologies, images, and publish status.'
-                : 'Add a new project to your portfolio showcase with full metadata.'}
+                ? 'Modify project information, category, technologies, media, and status.'
+                : 'Publish a new project with categories, technologies, and images.'}
             </p>
           </div>
         </div>
@@ -474,9 +455,9 @@ export default function ProjectForm({
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-60"
           >
             {isSubmitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-4 h-4 text-zinc-950" />
             )}
             <span>{isEditMode ? 'Save Changes' : 'Create Project'}</span>
           </button>
@@ -507,9 +488,9 @@ export default function ProjectForm({
             Core Information
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Title */}
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 lg:col-span-2">
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                 Project Title <span className="text-red-400">*</span>
               </label>
@@ -518,7 +499,7 @@ export default function ProjectForm({
                 required
                 value={title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="e.g. Distributed Task Queue Engine"
+                placeholder="e.g. Fintech Mobile Dashboard"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
               />
               {validationErrors.title && (
@@ -526,6 +507,21 @@ export default function ProjectForm({
                   {validationErrors.title}
                 </span>
               )}
+            </div>
+
+            {/* Year */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Project Year</span>
+              </label>
+              <input
+                type="text"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                placeholder="2026"
+                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 font-mono placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
+              />
             </div>
 
             {/* Slug */}
@@ -537,34 +533,29 @@ export default function ProjectForm({
                 type="text"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="distributed-task-queue"
+                placeholder="fintech-mobile-dashboard"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 font-mono placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
               />
-              {validationErrors.slug && (
-                <span className="text-[11px] text-red-400 mt-1 block">
-                  {validationErrors.slug}
-                </span>
-              )}
             </div>
 
-            {/* Category */}
+            {/* Category Dropdown (category_id) */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Category
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Category</span>
               </label>
-              <input
-                type="text"
-                list="category-suggestions"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Fullstack, Backend, AI, Mobile"
-                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
-              />
-              <datalist id="category-suggestions">
-                {availableCategories.map((c) => (
-                  <option key={c} value={c} />
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer font-medium"
+              >
+                <option value="">Select a Category...</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </div>
 
             {/* Project Type */}
@@ -577,9 +568,9 @@ export default function ProjectForm({
                 onChange={(e) => setProjectType(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer"
               >
-                <option value="">Select project type...</option>
-                <option value="Personal">Personal Project</option>
-                <option value="Client">Client Work</option>
+                <option value="">Select type...</option>
+                <option value="Personal Project">Personal Project</option>
+                <option value="Client Project">Client Project</option>
                 <option value="Open Source">Open Source</option>
                 <option value="Enterprise">Enterprise / Company</option>
               </select>
@@ -594,7 +585,7 @@ export default function ProjectForm({
                 type="text"
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
-                placeholder="e.g. Stripe, Acme Corp, Self"
+                placeholder="e.g. Acme Finance, Stripe"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
               />
             </div>
@@ -608,12 +599,12 @@ export default function ProjectForm({
                 type="text"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                placeholder="e.g. Lead Engineer, Fullstack Architect"
+                placeholder="e.g. Lead Architect, Frontend Engineer"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
               />
             </div>
 
-            {/* Status & Featured Row */}
+            {/* Status */}
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                 Publish Status
@@ -625,8 +616,8 @@ export default function ProjectForm({
                 }
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer font-medium"
               >
-                <option value="draft">Draft (Hidden from public)</option>
                 <option value="published">Published (Live on portfolio)</option>
+                <option value="draft">Draft (Hidden from public)</option>
                 <option value="archived">Archived (Internal record)</option>
               </select>
             </div>
@@ -646,7 +637,7 @@ export default function ProjectForm({
             </div>
 
             {/* Featured Checkbox */}
-            <div className="flex items-center pt-2">
+            <div className="flex items-center pt-5 sm:col-span-2">
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -663,7 +654,78 @@ export default function ProjectForm({
           </div>
         </div>
 
-        {/* Section B: Content & Descriptions */}
+        {/* Section B: Technologies Selection (technology_ids) */}
+        <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+                Technologies & Tools
+              </h2>
+            </div>
+            <span className="text-[11px] text-zinc-400">
+              {selectedTechIds.length} technology(ies) selected
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-400">
+            Click to select/unselect the technologies used in this project:
+          </p>
+
+          {/* Technology Chips Selection */}
+          <div className="flex flex-wrap items-center gap-2 min-h-10">
+            {availableTechnologies.map((tech) => {
+              const isSelected = selectedTechIds.includes(tech.id)
+              return (
+                <button
+                  key={tech.id}
+                  type="button"
+                  onClick={() => handleToggleTech(tech.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer border ${
+                    isSelected
+                      ? 'bg-white text-zinc-950 border-white font-semibold shadow-xs'
+                      : 'bg-zinc-900/80 text-zinc-400 hover:text-white border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  <span>{tech.name}</span>
+                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-zinc-950" />}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Quick Create New Technology */}
+          <div className="pt-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={newTechName}
+              onChange={(e) => setNewTechName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleCreateNewTech()
+                }
+              }}
+              placeholder="Add another technology (e.g. GraphQL, Tailwind CSS)..."
+              className="flex-1 px-3.5 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
+            />
+            <button
+              type="button"
+              disabled={isCreatingTech || !newTechName.trim()}
+              onClick={handleCreateNewTech}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-40"
+            >
+              {isCreatingTech ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>Add Tech</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section C: Descriptions & Overview */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 pb-2 border-b border-zinc-900">
             Descriptions & Overview
@@ -671,13 +733,13 @@ export default function ProjectForm({
 
           <div>
             <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-              Short Summary Description (Displayed on portfolio cards)
+              Short Summary Description (Card overview)
             </label>
             <input
               type="text"
               value={shortDescription}
               onChange={(e) => setShortDescription(e.target.value)}
-              placeholder="A high-performance distributed task engine processing 10k ops/sec"
+              placeholder="Modern financial dashboard with real-time analytics"
               className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all"
             />
           </div>
@@ -690,94 +752,22 @@ export default function ProjectForm({
               rows={6}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed architecture, challenges overcome, system design specifications, and outcomes..."
+              placeholder="Architecture, tech stack decisions, challenges solved, system design specifications, and outcomes..."
               className="w-full p-3.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all leading-relaxed"
             />
           </div>
         </div>
 
-        {/* Section C: Technologies Tags */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-              Technologies & Tools
-            </h2>
-            <span className="text-[11px] text-zinc-500">
-              {technologies.length} tags selected
-            </span>
-          </div>
-
-          {/* Active Tags */}
-          <div className="flex flex-wrap items-center gap-2 min-h-8">
-            {technologies.map((tech) => (
-              <span
-                key={tech}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200"
-              >
-                <span>{tech}</span>
-                <button
-                  type="button"
-                  onClick={() => removeTechnology(tech)}
-                  className="text-zinc-500 hover:text-white transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-
-          {/* Input to Add Tag */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={techInput}
-              onChange={(e) => setTechInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addTechnology(techInput)
-                }
-              }}
-              placeholder="Type technology (e.g. React 19, Go, Docker) and press Enter..."
-              className="flex-1 px-3.5 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
-            />
-            <button
-              type="button"
-              onClick={() => addTechnology(techInput)}
-              className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white transition-colors cursor-pointer"
-            >
-              Add
-            </button>
-          </div>
-
-          {/* Quick suggestions */}
-          {availableTechs.length > 0 && (
-            <div className="pt-2 flex items-center gap-1.5 flex-wrap text-xs text-zinc-400">
-              <span className="text-[11px] text-zinc-500">Quick add:</span>
-              {availableTechs.slice(0, 8).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => addTechnology(t)}
-                  className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 text-[10px] text-zinc-400 hover:text-white border border-zinc-800/80 transition-colors"
-                >
-                  +{t}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Section D: URLs & Dates */}
+        {/* Section D: Links & Dates */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 pb-2 border-b border-zinc-900">
-            Links & Project Timeline
+            Live URL & Repository Links
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Live Project Demo URL
+                Live Project / Demo URL
               </label>
               <input
                 type="text"
@@ -827,20 +817,20 @@ export default function ProjectForm({
           </div>
         </div>
 
-        {/* Section E: Project Media & Image Selection (Upload first, then select roles) */}
+        {/* Section E: Media & Project Images */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-900">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
-                <Image className="w-4 h-4 text-emerald-400" />
-                <span>Project Media & Image Selection</span>
+                <ImageIcon className="w-4 h-4 text-emerald-400" />
+                <span>Project Media & Images</span>
               </h2>
               <p className="text-xs text-zinc-500 mt-0.5">
-                Upload your project images first. Then simply select which one is the Featured Image and Cover Banner below.
+                Upload images via the upload button, then click "Set Featured" or "Set Cover" on any card below.
               </p>
             </div>
 
-            <div>
+            <div className="flex items-center gap-2">
               <input
                 ref={galleryInputRef}
                 type="file"
@@ -860,19 +850,20 @@ export default function ProjectForm({
                 ) : (
                   <Upload className="w-4 h-4 text-zinc-950" />
                 )}
-                <span>Upload Project Images</span>
+                <span>Upload Media (POST /projects/upload)</span>
               </button>
             </div>
           </div>
 
           {/* Active Selections Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
             {/* Selected Featured Image */}
             <div
               className={`p-4 rounded-xl border transition-all ${
                 featuredImageUrl
-                  ? "bg-amber-950/20 border-amber-500/40"
-                  : "bg-zinc-900/40 border-zinc-800"
+                  ? 'bg-amber-950/20 border-amber-500/40'
+                  : 'bg-zinc-900/40 border-zinc-800'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
@@ -887,19 +878,18 @@ export default function ProjectForm({
                 )}
               </div>
               {featuredImageUrl ? (
-                <div className="relative w-full h-32 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
+                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
                   <img
-                    src={
-                      featuredImageUrl.startsWith("http")
-                        ? featuredImageUrl
-                        : `${BASE_SERVER_URL}${featuredImageUrl}`
-                    }
+                    src={getProjectImageUrl(featuredImageUrl)}
                     alt="Featured preview"
                     className="w-full h-full object-cover"
                   />
                   <button
                     type="button"
-                    onClick={() => setFeaturedImageUrl("")}
+                    onClick={() => {
+                      setFeaturedImageUrl('')
+                      setFeaturedImageFile(null)
+                    }}
                     className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 transition-colors"
                     title="Clear selection"
                   >
@@ -907,10 +897,19 @@ export default function ProjectForm({
                   </button>
                 </div>
               ) : (
-                <div className="w-full h-32 rounded-lg border border-dashed border-zinc-800 flex flex-col items-center justify-center gap-1 text-center p-3">
+                <div
+                  onClick={() => featuredInputRef.current?.click()}
+                  className="w-full h-36 rounded-lg border border-dashed border-zinc-800 hover:border-zinc-700 flex flex-col items-center justify-center gap-1 text-center p-3 cursor-pointer transition-colors"
+                >
                   <Star className="w-5 h-5 text-zinc-600" />
-                  <span className="text-[11px] text-zinc-500">No Featured Image chosen</span>
-                  <span className="text-[10px] text-zinc-600">Click "Set Featured" on any uploaded image below</span>
+                  <span className="text-[11px] text-zinc-400">Click to upload or choose from gallery</span>
+                  <input
+                    ref={featuredInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFeaturedFileChange}
+                    className="hidden"
+                  />
                 </div>
               )}
             </div>
@@ -919,8 +918,8 @@ export default function ProjectForm({
             <div
               className={`p-4 rounded-xl border transition-all ${
                 bannerImageUrl
-                  ? "bg-cyan-950/20 border-cyan-500/40"
-                  : "bg-zinc-900/40 border-zinc-800"
+                  ? 'bg-cyan-950/20 border-cyan-500/40'
+                  : 'bg-zinc-900/40 border-zinc-800'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
@@ -935,19 +934,18 @@ export default function ProjectForm({
                 )}
               </div>
               {bannerImageUrl ? (
-                <div className="relative w-full h-32 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
+                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
                   <img
-                    src={
-                      bannerImageUrl.startsWith("http")
-                        ? bannerImageUrl
-                        : `${BASE_SERVER_URL}${bannerImageUrl}`
-                    }
+                    src={getProjectImageUrl(bannerImageUrl)}
                     alt="Cover preview"
                     className="w-full h-full object-cover"
                   />
                   <button
                     type="button"
-                    onClick={() => setBannerImageUrl("")}
+                    onClick={() => {
+                      setBannerImageUrl('')
+                      setBannerImageFile(null)
+                    }}
                     className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 transition-colors"
                     title="Clear selection"
                   >
@@ -955,10 +953,19 @@ export default function ProjectForm({
                   </button>
                 </div>
               ) : (
-                <div className="w-full h-32 rounded-lg border border-dashed border-zinc-800 flex flex-col items-center justify-center gap-1 text-center p-3">
+                <div
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="w-full h-36 rounded-lg border border-dashed border-zinc-800 hover:border-zinc-700 flex flex-col items-center justify-center gap-1 text-center p-3 cursor-pointer transition-colors"
+                >
                   <LayoutTemplate className="w-5 h-5 text-zinc-600" />
-                  <span className="text-[11px] text-zinc-500">No Cover / Banner chosen</span>
-                  <span className="text-[10px] text-zinc-600">Click "Set Cover" on any uploaded image below</span>
+                  <span className="text-[11px] text-zinc-400">Click to upload or choose from gallery</span>
+                  <input
+                    ref={bannerInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBannerFileChange}
+                    className="hidden"
+                  />
                 </div>
               )}
             </div>
@@ -971,24 +978,24 @@ export default function ProjectForm({
                 Uploaded Project Images ({galleryImages.length})
               </span>
               <span className="text-[11px] text-zinc-500">
-                Click buttons on each card to designate roles.
+                Click buttons on each image to designate as Featured or Cover.
               </span>
             </div>
 
             {galleryImages.length === 0 ? (
               <div
                 onClick={() => galleryInputRef.current?.click()}
-                className="py-12 border-2 border-dashed border-zinc-800 hover:border-zinc-700 rounded-2xl flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-colors bg-zinc-900/20 group"
+                className="py-10 border-2 border-dashed border-zinc-800 hover:border-zinc-700 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-zinc-900/20 group"
               >
-                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white transition-colors">
-                  <Upload className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white transition-colors">
+                  <Upload className="w-4 h-4" />
                 </div>
                 <div className="text-center">
                   <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors block">
-                    Click to upload images for this project
+                    Upload images to this project
                   </span>
                   <span className="text-[11px] text-zinc-500 mt-0.5 block">
-                    JPEG, PNG, WebP, or AVIF (select multiple files at once)
+                    Supports PNG, JPEG, WebP, AVIF
                   </span>
                 </div>
               </div>
@@ -1003,22 +1010,18 @@ export default function ProjectForm({
                       key={img.id || idx}
                       className={`relative group rounded-xl overflow-hidden bg-zinc-900 border transition-all ${
                         isFeat && isCov
-                          ? "border-amber-500 ring-2 ring-cyan-500/50"
+                          ? 'border-amber-500 ring-2 ring-cyan-500/50'
                           : isFeat
-                          ? "border-amber-500 ring-2 ring-amber-500/50"
+                          ? 'border-amber-500 ring-2 ring-amber-500/50'
                           : isCov
-                          ? "border-cyan-500 ring-2 ring-cyan-500/50"
-                          : "border-zinc-800 hover:border-zinc-700"
+                          ? 'border-cyan-500 ring-2 ring-cyan-500/50'
+                          : 'border-zinc-800 hover:border-zinc-700'
                       }`}
                     >
                       <div className="aspect-video w-full bg-black overflow-hidden flex items-center justify-center">
                         <img
-                          src={
-                            img.image_url.startsWith("http")
-                              ? img.image_url
-                              : `${BASE_SERVER_URL}${img.image_url}`
-                          }
-                          alt={img.alt_text || "Project media"}
+                          src={getProjectImageUrl(img.image_url)}
+                          alt={img.alt_text || 'Project media'}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -1039,7 +1042,7 @@ export default function ProjectForm({
                         )}
                       </div>
 
-                      {/* Delete button (top right) */}
+                      {/* Delete button */}
                       <button
                         type="button"
                         onClick={() => handleDeleteUploadedImage(img)}
@@ -1049,20 +1052,20 @@ export default function ProjectForm({
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* Card Action Buttons (Bottom) */}
+                      {/* Card Action Buttons */}
                       <div className="p-2 bg-zinc-950/90 border-t border-zinc-800 flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleSelectAsFeatured(img)}
                           className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
                             isFeat
-                              ? "bg-amber-500 text-black shadow-xs"
-                              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white"
+                              ? 'bg-amber-500 text-black shadow-xs'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
                           }`}
                           title="Set as Featured Card Image"
                         >
                           <Star className="w-3 h-3" />
-                          <span>{isFeat ? "Featured" : "Set Featured"}</span>
+                          <span>{isFeat ? 'Featured' : 'Set Feat'}</span>
                         </button>
 
                         <button
@@ -1070,24 +1073,24 @@ export default function ProjectForm({
                           onClick={() => handleSelectAsCover(img)}
                           className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
                             isCov
-                              ? "bg-cyan-500 text-black shadow-xs"
-                              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white"
+                              ? 'bg-cyan-500 text-black shadow-xs'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
                           }`}
                           title="Set as Cover / Banner Image"
                         >
                           <LayoutTemplate className="w-3 h-3" />
-                          <span>{isCov ? "Cover" : "Set Cover"}</span>
+                          <span>{isCov ? 'Cover' : 'Set Cover'}</span>
                         </button>
                       </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             )}
           </div>
         </div>
 
-        {/* Section G: SEO Settings */}
+        {/* Section F: SEO Settings */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 pb-2 border-b border-zinc-900">
             SEO & Search Engine Optimization
@@ -1102,7 +1105,7 @@ export default function ProjectForm({
                 type="text"
                 value={metaTitle}
                 onChange={(e) => setMetaTitle(e.target.value)}
-                placeholder="Title tag for Google & social previews"
+                placeholder="Title tag for search engines & previews"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
               />
             </div>
@@ -1115,7 +1118,7 @@ export default function ProjectForm({
                 type="text"
                 value={canonicalUrl}
                 onChange={(e) => setCanonicalUrl(e.target.value)}
-                placeholder="https://nikhil.dev/projects/slug"
+                placeholder="https://nikhilkumars.com/projects/slug"
                 className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
               />
             </div>
@@ -1128,7 +1131,7 @@ export default function ProjectForm({
                 rows={2}
                 value={metaDescription}
                 onChange={(e) => setMetaDescription(e.target.value)}
-                placeholder="Meta description for search engine result snippets..."
+                placeholder="Meta description for search engine snippets..."
                 className="w-full p-3.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
               />
             </div>
@@ -1151,9 +1154,9 @@ export default function ProjectForm({
             className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-60"
           >
             {isSubmitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-4 h-4 text-zinc-950" />
             )}
             <span>{isEditMode ? 'Update Project' : 'Create Project'}</span>
           </button>

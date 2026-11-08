@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import authService, { type User, USER_UPDATED_EVENT } from '../../utils/auth.service'
-import { BASE_SERVER_URL } from '../../utils/axios.service'
 import projectService, {
   type Project,
   type ProjectStats,
+  getProjectImageUrl,
 } from '../../utils/project.service'
 import {
   Briefcase,
@@ -146,9 +146,15 @@ export default function MainDashboard({
   ]
 
   // Dynamic categories from live projects
-  const availableCategories = [
+  const availableCategories: string[] = [
     'all',
-    ...Array.from(new Set(liveProjects.map((p) => p.category).filter(Boolean))),
+    ...Array.from(
+      new Set(
+        liveProjects
+          .map((p) => p.category)
+          .filter((c): c is string => Boolean(c))
+      )
+    ),
   ]
 
   const filteredProjects =
@@ -233,23 +239,27 @@ export default function MainDashboard({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-              {projectStats?.totalProjects ?? liveProjects.length}
+              {projectStats?.total ?? projectStats?.totalProjects ?? liveProjects.length}
             </span>
             {projectStats && (
               <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-400">
                 <TrendingUp className="w-3 h-3" />
-                {projectStats.featuredProjects} featured
+                {projectStats.featured ?? projectStats.featuredProjects ?? 0} featured
               </span>
             )}
           </div>
           <div className="mt-2 text-xs text-zinc-500 flex items-center gap-2">
-            <span>{projectStats?.publishedProjects ?? liveProjects.filter(p => p.status === 'published').length} published</span>
+            <span>
+              {projectStats?.published ?? projectStats?.publishedProjects ?? liveProjects.filter(p => p.status === 'published').length} published
+            </span>
             <span>•</span>
-            <span>{projectStats?.draftProjects ?? liveProjects.filter(p => p.status === 'draft').length} drafts</span>
-            {projectStats?.archivedProjects ? (
+            <span>
+              {projectStats?.draft ?? projectStats?.draftProjects ?? liveProjects.filter(p => p.status === 'draft').length} drafts
+            </span>
+            {(projectStats?.archived ?? projectStats?.archivedProjects) ? (
               <>
                 <span>•</span>
-                <span>{projectStats.archivedProjects} archived</span>
+                <span>{projectStats.archived ?? projectStats.archivedProjects} archived</span>
               </>
             ) : null}
           </div>
@@ -592,11 +602,7 @@ export default function MainDashboard({
                         <div className="flex items-center gap-3">
                           {project.featured_image || project.cover_image ? (
                             <img
-                              src={
-                                (project.featured_image || project.cover_image)!.startsWith('http')
-                                  ? (project.featured_image || project.cover_image)!
-                                  : `${BASE_SERVER_URL}${project.featured_image || project.cover_image}`
-                              }
+                              src={getProjectImageUrl(project.featured_image || project.cover_image)}
                               alt={project.title}
                               className="w-8 h-8 rounded-lg object-cover bg-zinc-900 border border-zinc-800 flex-shrink-0"
                             />

@@ -3,8 +3,9 @@ import projectService, {
   type Project,
   type PaginationMeta,
   type ProjectQueryParams,
+  getProjectImageUrl,
 } from '../../utils/project.service'
-import { BASE_SERVER_URL } from '../../utils/axios.service'
+import categoryService from '../../utils/category.service'
 import {
   Briefcase,
   Plus,
@@ -94,9 +95,9 @@ export default function ProjectsList({
 
   // Load categories and initial projects
   useEffect(() => {
-    projectService
-      .getCategories()
-      .then((cats) => setCategories(cats))
+    categoryService
+      .getAll()
+      .then((cats) => setCategories(cats.map((c) => c.name)))
       .catch(() => {})
   }, [])
 
@@ -415,11 +416,7 @@ export default function ProjectsList({
                         <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
                           {(project.featured_image || project.cover_image) ? (
                             <img
-                              src={
-                                (project.featured_image || project.cover_image)!.startsWith('http')
-                                  ? (project.featured_image || project.cover_image)!
-                                  : `${BASE_SERVER_URL}${project.featured_image || project.cover_image}`
-                              }
+                              src={getProjectImageUrl(project.featured_image || project.cover_image)}
                               alt={project.title}
                               className="w-full h-full object-cover"
                               onError={(e) => {
