@@ -135,6 +135,34 @@ export interface CreateProjectPayload {
 
 export interface UpdateProjectPayload extends Partial<CreateProjectPayload> {}
 
+export interface ProjectImageUploadPayload {
+  image: File | Blob
+  alt_text?: string
+  caption?: string
+  is_cover?: boolean | string
+  is_featured?: boolean | string
+  is_banner?: boolean | string
+}
+
+export interface ProjectImageSelectionPayload {
+  featured_image_id?: number | string
+  banner_image_id?: number | string
+  cover_image_id?: number | string
+  featured_image?: string
+  banner_image?: string
+  cover_image?: string
+}
+
+export interface ProjectImageUpdatePayload {
+  alt_text?: string | null
+  caption?: string | null
+  display_order?: number
+  sort_order?: number
+  is_cover?: boolean
+  is_featured?: boolean
+  is_banner?: boolean
+}
+
 export interface ProjectStats {
   total: number
   published: number
@@ -464,7 +492,52 @@ export const projectService = {
   },
 
   /**
-   * Backward-compatible image helpers
+   * GET /projects/:id/images - GET method for gallery images
+   */
+  async getGalleryImages(projectId: number | string): Promise<ProjectImage[]> {
+    const response = await axiosService.get<ApiResponse<ProjectImage[]>>(
+      `/projects/${projectId}/images`
+    )
+    return response.data.data || []
+  },
+
+  /**
+   * Alias for getGalleryImages
+   */
+  async getImages(projectId: number | string): Promise<ProjectImage[]> {
+    return this.getGalleryImages(projectId)
+  },
+
+  /**
+   * POST /projects/:id/images - POST method to upload/create image in project gallery
+   * Payload: FormData or ProjectImageUploadPayload
+   */
+  async createImage(
+    projectId: number | string,
+    payload: ProjectImageUploadPayload | FormData
+  ): Promise<ProjectImage> {
+    let body: FormData
+    if (payload instanceof FormData) {
+      body = payload
+    } else {
+      body = new FormData()
+      body.append('image', payload.image)
+      if (payload.alt_text !== undefined) body.append('alt_text', payload.alt_text)
+      if (payload.caption !== undefined) body.append('caption', payload.caption)
+      if (payload.is_cover !== undefined) body.append('is_cover', String(payload.is_cover))
+      if (payload.is_featured !== undefined) body.append('is_featured', String(payload.is_featured))
+      if (payload.is_banner !== undefined) body.append('is_banner', String(payload.is_banner))
+    }
+
+    const response = await axiosService.post<ApiResponse<ProjectImage>>(
+      `/projects/${projectId}/images`,
+      body
+    )
+    return response.data.data
+  },
+
+  /**
+   * Alias / helper for createImage
    */
   async uploadImage(
     projectId: number | string,
@@ -478,59 +551,60 @@ export const projectService = {
       type?: 'featured' | 'banner' | 'gallery'
     }
   ): Promise<ProjectImage> {
-    try {
-      const formData = new FormData()
-      formData.append('image', file)
-      if (meta?.alt_text) formData.append('alt_text', meta.alt_text)
-      if (meta?.caption) formData.append('caption', meta.caption)
-      if (meta?.is_cover !== undefined) formData.append('is_cover', String(meta.is_cover))
-      if (meta?.is_featured !== undefined) formData.append('is_featured', String(meta.is_featured))
-      if (meta?.is_banner !== undefined) formData.append('is_banner', String(meta.is_banner))
-      if (meta?.type) formData.append('type', meta.type)
+    const formData = new FormData()
+    formData.append('image', file)
+    if (meta?.alt_text) formData.append('alt_text', meta.alt_text)
+    if (meta?.caption) formData.append('caption', meta.caption)
+    if (meta?.is_cover !== undefined) formData.append('is_cover', String(meta.is_cover))
+    if (meta?.is_featured !== undefined) formData.append('is_featured', String(meta.is_featured))
+    if (meta?.is_banner !== undefined) formData.append('is_banner', String(meta.is_banner))
 
-      const response = await axiosService.post<ApiResponse<ProjectImage>>(
-        `/projects/${projectId}/images`,
-        formData
-      )
-      return response.data.data
-    } catch {
-      // Fallback to standalone upload if /projects/:id/images is not present
-      const [uploaded] = await this.uploadMedia(file)
-      return uploaded
-    }
+    return this.createImage(projectId, formData)
   },
 
-  async deleteImage(
+  /**
+   * PATCH /projects/:id/select-images - PATCH method to designate featured and/or banner images
+   */
+  async selectImages(
+    projectId: number | string,
+    selections: ProjectImageSelectionPayload
+  ): Promise<Project> {
+    const response = await axiosService.patch<ApiResponse<Project>>(
+      `/projects/${projectId}/select-images`,
+      selections
+    )
+    return response.data.data
+  },
+
+  /**
+   * PATCH /projects/:id/images/:imageId/cover - PATCH method to set cover image
+   */
+  async setCoverImage(
     projectId: number | string,
     imageId: number | string
-  ): Promise<{ id: number }> {
-    try {
-      const response = await axiosService.delete<ApiResponse<{ id: number }>>(
-        `/projects/${projectId}/images/${imageId}`
-      )
-      return { id: Number(response.data.data?.id || imageId) }
-    } catch {
-      return { id: Number(imageId) }
-    }
+  ): Promise<ProjectImage> {
+    const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+      `/projects/${projectId}/images/${imageId}/cover`
+    )
+    return response.data.data
   },
 
+  /**
+   * PATCH /projects/:id/images/:imageId/featured - PATCH method to set featured image
+   */
   async setFeaturedImage(
     projectId: number | string,
     imageId: number | string
   ): Promise<ProjectImage> {
-    try {
-      const response = await axiosService.patch<ApiResponse<ProjectImage>>(
-        `/projects/${projectId}/images/${imageId}/featured`
-      )
-      return response.data.data
-    } catch {
-      const response = await axiosService.patch<ApiResponse<ProjectImage>>(
-        `/projects/${projectId}/images/${imageId}/cover`
-      )
-      return response.data.data
-    }
+    const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+      `/projects/${projectId}/images/${imageId}/featured`
+    )
+    return response.data.data
   },
 
+  /**
+   * PATCH /projects/:id/images/:imageId/banner - PATCH method to set banner image
+   */
   async setBannerImage(
     projectId: number | string,
     imageId: number | string
@@ -539,6 +613,66 @@ export const projectService = {
       `/projects/${projectId}/images/${imageId}/banner`
     )
     return response.data.data
+  },
+
+  /**
+   * PATCH /projects/:id/images/:imageId - PATCH method to update image metadata
+   */
+  async updateImage(
+    projectId: number | string,
+    imageId: number | string,
+    meta: ProjectImageUpdatePayload
+  ): Promise<ProjectImage> {
+    const response = await axiosService.patch<ApiResponse<ProjectImage>>(
+      `/projects/${projectId}/images/${imageId}`,
+      meta
+    )
+    return response.data.data
+  },
+
+  /**
+   * Alias for updateImage
+   */
+  async updateImageMeta(
+    projectId: number | string,
+    imageId: number | string,
+    meta: ProjectImageUpdatePayload
+  ): Promise<ProjectImage> {
+    return this.updateImage(projectId, imageId, meta)
+  },
+
+  /**
+   * PATCH /projects/:id/images/reorder - PATCH method to reorder gallery images
+   */
+  async reorderImages(
+    projectId: number | string,
+    images: Array<{ id: number; sort_order?: number; display_order?: number }>
+  ): Promise<{ success: boolean; message: string; data?: ProjectImage[] }> {
+    const response = await axiosService.patch<ApiResponse<ProjectImage[]>>(
+      `/projects/${projectId}/images/reorder`,
+      { images }
+    )
+    return {
+      success: response.data.success,
+      message: response.data.message,
+      data: response.data.data,
+    }
+  },
+
+  /**
+   * DELETE /projects/:id/images/:imageId - DELETE method to remove image from gallery
+   */
+  async deleteImage(
+    projectId: number | string,
+    imageId: number | string
+  ): Promise<{ id: number; message: string }> {
+    const response = await axiosService.delete<ApiResponse<{ id: number }>>(
+      `/projects/${projectId}/images/${imageId}`
+    )
+    return {
+      id: Number(response.data.data?.id || imageId),
+      message: response.data.message || 'Image deleted successfully',
+    }
   },
 }
 

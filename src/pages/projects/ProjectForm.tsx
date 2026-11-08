@@ -173,9 +173,19 @@ export default function ProjectForm({
         setFeaturedImageUrl(proj.featured_image || proj.cover_image || '')
         setBannerImageUrl(proj.banner_image || '')
 
-        // Combine all images
-        const imgs = proj.images || proj.gallery_images || []
-        setGalleryImages(imgs)
+        // Load latest gallery images via GET /projects/:id/images
+        projectService
+          .getGalleryImages(projectId)
+          .then((imgs) => {
+            if (imgs && imgs.length > 0) {
+              setGalleryImages(imgs)
+            } else {
+              setGalleryImages(proj.images || proj.gallery_images || [])
+            }
+          })
+          .catch(() => {
+            setGalleryImages(proj.images || proj.gallery_images || [])
+          })
       })
       .catch((err: unknown) => {
         const errorObj = err as { message?: string }
@@ -214,7 +224,7 @@ export default function ProjectForm({
     }
   }
 
-  // Upload Media Files using POST /projects/upload
+  // Upload Media Files using POST /projects/:id/images (or POST /projects/upload)
   const handleImagesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -224,7 +234,24 @@ export default function ProjectForm({
 
     try {
       const filesArray = Array.from(files)
-      const uploadedImages = await projectService.uploadMedia(filesArray)
+      const uploadedImages: ProjectImage[] = []
+
+      if (projectId) {
+        // Direct gallery creation via POST /projects/:id/images
+        for (const file of filesArray) {
+          const uploaded = await projectService.createImage(projectId, {
+            image: file,
+            is_cover: !featuredImageUrl,
+            is_featured: !featuredImageUrl,
+            is_banner: !bannerImageUrl,
+          })
+          uploadedImages.push(uploaded)
+        }
+      } else {
+        // Standalone upload via POST /projects/upload
+        const res = await projectService.uploadMedia(filesArray)
+        uploadedImages.push(...res)
+      }
 
       setGalleryImages((prev) => [...prev, ...uploadedImages])
 
@@ -265,23 +292,41 @@ export default function ProjectForm({
     setBannerImageUrl(URL.createObjectURL(file))
   }
 
-  // Select gallery item as featured
-  const handleSelectAsFeatured = (img: ProjectImage) => {
+  // Select gallery item as featured (PATCH /projects/:id/images/:imageId/featured & /projects/:id/select-images)
+  const handleSelectAsFeatured = async (img: ProjectImage) => {
     setFeaturedImageUrl(img.image_url)
     setFeaturedImageFile(null)
+
+    if (projectId && typeof img.id === 'number') {
+      try {
+        await projectService.setFeaturedImage(projectId, img.id)
+      } catch {
+        // keep optimistic assignment
+      }
+    }
+
     setSuccessBanner('Featured card image selected')
     setTimeout(() => setSuccessBanner(''), 2500)
   }
 
-  // Select gallery item as cover/banner
-  const handleSelectAsCover = (img: ProjectImage) => {
+  // Select gallery item as cover/banner (PATCH /projects/:id/images/:imageId/cover & /projects/:id/images/:imageId/banner)
+  const handleSelectAsCover = async (img: ProjectImage) => {
     setBannerImageUrl(img.image_url)
     setBannerImageFile(null)
+
+    if (projectId && typeof img.id === 'number') {
+      try {
+        await projectService.setCoverImage(projectId, img.id)
+      } catch {
+        // keep optimistic assignment
+      }
+    }
+
     setSuccessBanner('Cover banner image selected')
     setTimeout(() => setSuccessBanner(''), 2500)
   }
 
-  // Delete gallery item
+  // Delete gallery item (DELETE /projects/:id/images/:imageId)
   const handleDeleteUploadedImage = async (img: ProjectImage) => {
     if (img.image_url === featuredImageUrl) setFeaturedImageUrl('')
     if (img.image_url === bannerImageUrl) setBannerImageUrl('')
