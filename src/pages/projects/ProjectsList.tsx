@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import projectService, {
   type Project,
+  type ProjectImage,
   type PaginationMeta,
   type ProjectQueryParams,
   getProjectImageUrl,
@@ -21,6 +22,7 @@ import {
   LayoutList,
   LayoutGrid,
   Eye,
+  Images,
   Calendar,
   Clock,
   Layers,
@@ -32,6 +34,8 @@ import {
   User,
   ShieldCheck,
 } from 'lucide-react'
+import ProjectGalleryView from '../../component/projects/ProjectGalleryView'
+import ProjectGalleryModal from '../../component/projects/ProjectGalleryModal'
 
 interface ProjectsListProps {
   onAddProject: () => void
@@ -71,8 +75,12 @@ export default function ProjectsList({
 
   // Single Project Details Modal state
   const [viewingProject, setViewingProject] = useState<Project | null>(null)
+  const [viewingProjectImages, setViewingProjectImages] = useState<ProjectImage[]>([])
   const [isLoadingSingle, setIsLoadingSingle] = useState(false)
   const [singleViewError, setSingleViewError] = useState('')
+
+  // Gallery Modal state
+  const [galleryProject, setGalleryProject] = useState<Project | null>(null)
 
   // Delete modal state
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
@@ -186,13 +194,21 @@ export default function ProjectsList({
   // Open Single Project Details Modal
   const handleOpenSingleView = async (project: Project) => {
     setViewingProject(project)
+    setViewingProjectImages(project.images || project.gallery_images || [])
     setIsLoadingSingle(true)
     setSingleViewError('')
 
     try {
-      const fullDetails = await projectService.getById(project.id)
-      if (fullDetails) {
-        setViewingProject(fullDetails)
+      const [fullDetailsRes, galleryImgsRes] = await Promise.allSettled([
+        projectService.getById(project.id),
+        projectService.getGalleryImages(project.id),
+      ])
+
+      if (fullDetailsRes.status === 'fulfilled' && fullDetailsRes.value) {
+        setViewingProject(fullDetailsRes.value)
+      }
+      if (galleryImgsRes.status === 'fulfilled' && galleryImgsRes.value) {
+        setViewingProjectImages(galleryImgsRes.value)
       }
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
@@ -624,6 +640,16 @@ export default function ProjectsList({
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
+                          {/* Gallery Modal Button */}
+                          <button
+                            type="button"
+                            onClick={() => setGalleryProject(project)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                            title="Manage project image gallery"
+                          >
+                            <Images className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* External link */}
                           {(project.project_url || project.live_url) && (
                             <a
@@ -798,6 +824,15 @@ export default function ProjectsList({
                         <Eye className="w-3.5 h-3.5" />
                       </button>
 
+                      <button
+                        type="button"
+                        onClick={() => setGalleryProject(project)}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                        title="View project gallery"
+                      >
+                        <Images className="w-3.5 h-3.5" />
+                      </button>
+
                       {(project.project_url || project.live_url) && (
                         <a
                           href={project.project_url || project.live_url || '#'}
@@ -886,8 +921,8 @@ export default function ProjectsList({
 
       {/* 6. Single Project Details Modal */}
       {viewingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150 font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150 font-sans">
             
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between">
@@ -1140,6 +1175,41 @@ export default function ProjectsList({
                 </div>
               </div>
 
+              {/* Project Image Gallery Section */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Images className="w-4 h-4 text-white" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-white">
+                      Project Media Gallery ({viewingProjectImages.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGalleryProject(viewingProject)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>Full Gallery Manager</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <ProjectGalleryView
+                  projectId={viewingProject.id}
+                  projectTitle={viewingProject.title}
+                  images={viewingProjectImages}
+                  featuredImageUrl={viewingProject.featured_image || viewingProject.cover_image || ''}
+                  bannerImageUrl={viewingProject.banner_image || ''}
+                  onImagesChange={(updated) => {
+                    setViewingProjectImages(updated)
+                    fetchProjects(pagination.page)
+                  }}
+                  onUploadSuccess={() => {
+                    fetchProjects(pagination.page)
+                  }}
+                />
+              </div>
+
               {/* SEO Preview */}
               {(viewingProject.meta_title || viewingProject.meta_description || viewingProject.canonical_url) && (
                 <div className="p-4 rounded-xl bg-zinc-900/20 border border-zinc-800 space-y-2">
@@ -1264,6 +1334,14 @@ export default function ProjectsList({
           </div>
         </div>
       )}
+
+      {/* 7. Standalone Project Gallery Modal */}
+      <ProjectGalleryModal
+        project={galleryProject}
+        isOpen={Boolean(galleryProject)}
+        onClose={() => setGalleryProject(null)}
+        onProjectUpdated={() => fetchProjects(pagination.page)}
+      />
 
     </div>
   )

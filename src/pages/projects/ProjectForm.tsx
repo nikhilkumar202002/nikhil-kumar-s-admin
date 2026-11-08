@@ -6,6 +6,7 @@ import projectService, {
 } from '../../utils/project.service'
 import categoryService, { type Category } from '../../utils/category.service'
 import technologyService, { type Technology } from '../../utils/technology.service'
+import ProjectGalleryView from '../../component/projects/ProjectGalleryView'
 import {
   ArrowLeft,
   Save,
@@ -13,7 +14,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Upload,
-  Trash2,
   Star,
   Image as ImageIcon,
   LayoutTemplate,
@@ -1095,122 +1095,30 @@ export default function ProjectForm({
             </div>
           </div>
 
-          {/* Uploaded Images Pool / Gallery */}
+          {/* Uploaded Images Gallery View */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-300">
-                Uploaded Project Images ({galleryImages.length})
-              </span>
-              <span className="text-[11px] text-zinc-500">
-                Click buttons on each image to designate as Featured or Cover.
-              </span>
+              <div>
+                <span className="text-xs font-semibold text-zinc-300 block">
+                  Project Gallery View ({galleryImages.length})
+                </span>
+                <span className="text-[11px] text-zinc-500">
+                  Manage image designations, order, alt texts, captions, and lightbox previews.
+                </span>
+              </div>
             </div>
 
-            {galleryImages.length === 0 ? (
-              <div
-                onClick={() => galleryInputRef.current?.click()}
-                className="py-10 border-2 border-dashed border-zinc-800 hover:border-zinc-700 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-zinc-900/20 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white transition-colors">
-                  <Upload className="w-4 h-4" />
-                </div>
-                <div className="text-center">
-                  <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors block">
-                    Upload images to this project
-                  </span>
-                  <span className="text-[11px] text-zinc-500 mt-0.5 block">
-                    Supports PNG, JPEG, WebP, AVIF
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-                {galleryImages.map((img, idx) => {
-                  const isFeat = img.image_url === featuredImageUrl || img.is_featured || img.is_cover
-                  const isCov = img.image_url === bannerImageUrl || img.is_banner
-
-                  return (
-                    <div
-                      key={img.id || idx}
-                      className={`relative group rounded-xl overflow-hidden bg-zinc-900 border transition-all ${
-                        isFeat && isCov
-                          ? 'border-amber-500 ring-2 ring-cyan-500/50'
-                          : isFeat
-                          ? 'border-amber-500 ring-2 ring-amber-500/50'
-                          : isCov
-                          ? 'border-cyan-500 ring-2 ring-cyan-500/50'
-                          : 'border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="aspect-video w-full bg-black overflow-hidden flex items-center justify-center">
-                        <img
-                          src={getProjectImageUrl(img.image_url)}
-                          alt={img.alt_text || 'Project media'}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-
-                      {/* Active Badges */}
-                      <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 pointer-events-none">
-                        {isFeat && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black flex items-center gap-0.5 shadow-sm">
-                            <Star className="w-2.5 h-2.5 fill-black" />
-                            <span>Featured</span>
-                          </span>
-                        )}
-                        {isCov && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500 text-black flex items-center gap-0.5 shadow-sm">
-                            <LayoutTemplate className="w-2.5 h-2.5" />
-                            <span>Cover</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Delete button */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteUploadedImage(img)}
-                        className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-950 text-zinc-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                        title="Delete image"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Card Action Buttons */}
-                      <div className="p-2 bg-zinc-950/90 border-t border-zinc-800 flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectAsFeatured(img)}
-                          className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                            isFeat
-                              ? 'bg-amber-500 text-black shadow-xs'
-                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
-                          }`}
-                          title="Set as Featured Card Image"
-                        >
-                          <Star className="w-3 h-3" />
-                          <span>{isFeat ? 'Featured' : 'Set Feat'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSelectAsCover(img)}
-                          className={`flex-1 flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                            isCov
-                              ? 'bg-cyan-500 text-black shadow-xs'
-                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
-                          }`}
-                          title="Set as Cover / Banner Image"
-                        >
-                          <LayoutTemplate className="w-3 h-3" />
-                          <span>{isCov ? 'Cover' : 'Set Cover'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <ProjectGalleryView
+              projectId={projectId || undefined}
+              projectTitle={title}
+              images={galleryImages}
+              featuredImageUrl={featuredImageUrl}
+              bannerImageUrl={bannerImageUrl}
+              onImagesChange={(updated) => setGalleryImages(updated)}
+              onSelectFeatured={handleSelectAsFeatured}
+              onSelectCover={handleSelectAsCover}
+              onDeleteImage={handleDeleteUploadedImage}
+            />
           </div>
         </div>
 
