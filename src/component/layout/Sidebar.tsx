@@ -66,6 +66,32 @@ export default function Sidebar({
     contact: true,
   })
 
+  // Synchronize current active item and auto-expand parent menu when activeId changes or restores on refresh
+  useEffect(() => {
+    setCurrentActive(activeId)
+    if (activeId.startsWith('projects-') || activeId === 'projects') {
+      setOpenMenus((prev) => ({ ...prev, projects: true }))
+    } else if (activeId.startsWith('skills-') || activeId === 'skills' || activeId === 'technologies') {
+      setOpenMenus((prev) => ({ ...prev, skills: true }))
+    } else if (activeId.startsWith('experience-') || activeId === 'experience') {
+      setOpenMenus((prev) => ({ ...prev, experience: true }))
+    } else if (activeId.startsWith('education-') || activeId === 'education') {
+      setOpenMenus((prev) => ({ ...prev, education: true }))
+    } else if (activeId.startsWith('blog-') || activeId === 'blog') {
+      setOpenMenus((prev) => ({ ...prev, blog: true }))
+    } else if (activeId.startsWith('media-') || activeId === 'media') {
+      setOpenMenus((prev) => ({ ...prev, media: true }))
+    } else if (activeId.startsWith('seo-') || activeId === 'seo') {
+      setOpenMenus((prev) => ({ ...prev, seo: true }))
+    } else if (activeId.startsWith('contact-') || activeId === 'contact') {
+      setOpenMenus((prev) => ({ ...prev, contact: true }))
+    } else if (activeId.startsWith('settings-') || activeId === 'settings') {
+      setOpenMenus((prev) => ({ ...prev, settings: true }))
+    } else if (activeId.startsWith('logs-') || activeId === 'logs') {
+      setOpenMenus((prev) => ({ ...prev, logs: true }))
+    }
+  }, [activeId])
+
   useEffect(() => {
     // If a direct logo URL is passed, use it
     if (logoUrl) {

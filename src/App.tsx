@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Login from './pages/auth/Login'
 import Sidebar from './component/layout/Sidebar'
 import Header from './component/layout/Header'
@@ -11,13 +11,146 @@ import ChangePassword from './pages/auth/ChangePassword'
 import ProfileView from './pages/auth/ProfileView'
 import authService from './utils/auth.service'
 
+const STORAGE_KEY_MENU = 'admin_active_menu'
+const STORAGE_KEY_PROJECT_ID = 'admin_editing_project_id'
+
+interface RouteState {
+  menuId: string
+  projectId: number | null
+}
+
+/**
+ * Parses the current active route from URL hash, pathname, or localStorage.
+ * Ensures that refreshing the browser stays on the current page instead of redirecting to dashboard.
+ */
+function parseCurrentRoute(): RouteState {
+  try {
+    // 1. Check window.location.hash (e.g. "#/projects-categories", "#/projects-edit?id=47")
+    const hash = window.location.hash.replace(/^#\/?/, '').trim()
+    if (hash) {
+      const [path, queryString] = hash.split('?')
+      const params = new URLSearchParams(queryString || '')
+      const idParam = params.get('id')
+      const projectId = idParam ? Number(idParam) : null
+
+      if (path) {
+        return {
+          menuId: path,
+          projectId: Number.isNaN(projectId) ? null : projectId,
+        }
+      }
+    }
+
+    // 2. Check window.location.pathname (e.g. "/projects-categories", "/projects/edit/47")
+    const pathname = window.location.pathname.replace(/^\//, '').replace(/\/$/, '').trim()
+    if (pathname && pathname !== 'index.html' && pathname !== 'dashboard') {
+      const parts = pathname.split('/')
+      if (parts[0] === 'projects' && parts[1] === 'edit' && parts[2]) {
+        const pId = Number(parts[2])
+        return {
+          menuId: 'projects-edit',
+          projectId: Number.isNaN(pId) ? null : pId,
+        }
+      }
+
+      const params = new URLSearchParams(window.location.search)
+      const idParam = params.get('id')
+      const projectId = idParam ? Number(idParam) : null
+
+      return {
+        menuId: parts[0],
+        projectId: Number.isNaN(projectId) ? null : projectId,
+      }
+    }
+
+    // 3. Check localStorage fallback
+    const storedMenu = localStorage.getItem(STORAGE_KEY_MENU)
+    const storedProjectId = localStorage.getItem(STORAGE_KEY_PROJECT_ID)
+    if (storedMenu) {
+      const parsedId = storedProjectId ? Number(storedProjectId) : null
+      return {
+        menuId: storedMenu,
+        projectId: Number.isNaN(parsedId) ? null : parsedId,
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse current route:', err)
+  }
+
+  // 4. Default to dashboard
+  return {
+    menuId: 'dashboard',
+    projectId: null,
+  }
+}
+
+/**
+ * Syncs the route state to localStorage and the browser URL hash.
+ */
+function syncRouteToBrowser(menuId: string, projectId: number | null = null, replace = false) {
+  try {
+    localStorage.setItem(STORAGE_KEY_MENU, menuId)
+    if (projectId !== null && !Number.isNaN(projectId)) {
+      localStorage.setItem(STORAGE_KEY_PROJECT_ID, String(projectId))
+    } else {
+      localStorage.removeItem(STORAGE_KEY_PROJECT_ID)
+    }
+
+    let targetHash = `#/${menuId}`
+    if (projectId !== null && !Number.isNaN(projectId)) {
+      targetHash += `?id=${projectId}`
+    }
+
+    if (window.location.hash !== targetHash) {
+      if (replace) {
+        window.history.replaceState(null, '', targetHash)
+      } else {
+        window.history.pushState(null, '', targetHash)
+      }
+    }
+  } catch (err) {
+    console.error('Failed to sync route to browser:', err)
+  }
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
     authService.isAuthenticated()
   )
-  const [activeMenuId, setActiveMenuId] = useState<string>('dashboard')
-  const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
 
+  // Initialize directly from URL hash or localStorage so refreshing maintains the exact page
+  const initialRoute = parseCurrentRoute()
+  const [activeMenuId, setActiveMenuId] = useState<string>(initialRoute.menuId)
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(initialRoute.projectId)
+
+  // Unified navigation handler
+  const navigate = useCallback((menuId: string, projectId: number | null = null) => {
+    setActiveMenuId(menuId)
+    setEditingProjectId(projectId)
+    syncRouteToBrowser(menuId, projectId)
+  }, [])
+
+  // Sync with browser Back/Forward buttons and hash changes
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = parseCurrentRoute()
+      setActiveMenuId(route.menuId)
+      setEditingProjectId(route.projectId)
+    }
+
+    window.addEventListener('hashchange', handlePopState)
+    window.addEventListener('popstate', handlePopState)
+
+    // Ensure initial URL hash matches the restored state
+    syncRouteToBrowser(activeMenuId, editingProjectId, true)
+
+    return () => {
+      window.removeEventListener('hashchange', handlePopState)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [activeMenuId, editingProjectId])
+
+  // Listen for auth changes across storage events
   useEffect(() => {
     const handleAuthChange = () => {
       setIsAuthenticated(authService.isAuthenticated())
@@ -25,6 +158,14 @@ export default function App() {
     window.addEventListener('storage', handleAuthChange)
     return () => window.removeEventListener('storage', handleAuthChange)
   }, [])
+
+  const handleLogout = () => {
+    authService.logout()
+    localStorage.removeItem(STORAGE_KEY_MENU)
+    localStorage.removeItem(STORAGE_KEY_PROJECT_ID)
+    setIsAuthenticated(false)
+    window.location.hash = ''
+  }
 
   const getPageTitle = (id: string) => {
     switch (id) {
@@ -41,7 +182,13 @@ export default function App() {
         return 'Project Categories'
       case 'projects-technologies':
       case 'technologies':
+      case 'skills':
+      case 'skills-all':
         return 'Technologies & Skills'
+      case 'profile-me':
+        return 'Admin Profile'
+      case 'profile-password':
+        return 'Change Password'
       default:
         return id.replace('-', ' ')
     }
@@ -52,15 +199,9 @@ export default function App() {
       case 'dashboard':
         return (
           <MainDashboard
-            onAddProject={() => {
-              setEditingProjectId(null)
-              setActiveMenuId('projects-add')
-            }}
-            onEditProject={(id) => {
-              setEditingProjectId(id)
-              setActiveMenuId('projects-edit')
-            }}
-            onViewAllProjects={() => setActiveMenuId('projects-all')}
+            onAddProject={() => navigate('projects-add')}
+            onEditProject={(id) => navigate('projects-edit', id)}
+            onViewAllProjects={() => navigate('projects-all')}
           />
         )
 
@@ -68,24 +209,15 @@ export default function App() {
       case 'projects-all':
         return (
           <ProjectsList
-            onAddProject={() => {
-              setEditingProjectId(null)
-              setActiveMenuId('projects-add')
-            }}
-            onEditProject={(id) => {
-              setEditingProjectId(id)
-              setActiveMenuId('projects-edit')
-            }}
+            onAddProject={() => navigate('projects-add')}
+            onEditProject={(id) => navigate('projects-edit', id)}
           />
         )
 
       case 'projects-categories':
         return (
           <ProjectCategories
-            onAddProject={() => {
-              setEditingProjectId(null)
-              setActiveMenuId('projects-add')
-            }}
+            onAddProject={() => navigate('projects-add')}
           />
         )
 
@@ -95,10 +227,7 @@ export default function App() {
       case 'skills-all':
         return (
           <ProjectTechnology
-            onAddProject={() => {
-              setEditingProjectId(null)
-              setActiveMenuId('projects-add')
-            }}
+            onAddProject={() => navigate('projects-add')}
           />
         )
 
@@ -106,8 +235,8 @@ export default function App() {
         return (
           <ProjectForm
             projectId={null}
-            onCancel={() => setActiveMenuId('projects-all')}
-            onSuccess={() => setActiveMenuId('projects-all')}
+            onCancel={() => navigate('projects-all')}
+            onSuccess={() => navigate('projects-all')}
           />
         )
 
@@ -115,38 +244,32 @@ export default function App() {
         return (
           <ProjectForm
             projectId={editingProjectId}
-            onCancel={() => setActiveMenuId('projects-all')}
-            onSuccess={() => setActiveMenuId('projects-all')}
+            onCancel={() => navigate('projects-all')}
+            onSuccess={() => navigate('projects-all')}
           />
         )
 
       case 'profile-me':
         return (
           <ProfileView
-            onChangePassword={() => setActiveMenuId('profile-password')}
+            onChangePassword={() => navigate('profile-password')}
           />
         )
 
       case 'profile-password':
         return (
           <ChangePassword
-            onCancel={() => setActiveMenuId('dashboard')}
-            onSuccess={() => setActiveMenuId('dashboard')}
+            onCancel={() => navigate('dashboard')}
+            onSuccess={() => navigate('dashboard')}
           />
         )
 
       default:
         return (
           <MainDashboard
-            onAddProject={() => {
-              setEditingProjectId(null)
-              setActiveMenuId('projects-add')
-            }}
-            onEditProject={(id) => {
-              setEditingProjectId(id)
-              setActiveMenuId('projects-edit')
-            }}
-            onViewAllProjects={() => setActiveMenuId('projects-all')}
+            onAddProject={() => navigate('projects-add')}
+            onEditProject={(id) => navigate('projects-edit', id)}
+            onViewAllProjects={() => navigate('projects-all')}
           />
         )
     }
@@ -160,28 +283,24 @@ export default function App() {
           activeId={activeMenuId}
           onSelect={(id) => {
             if (id === 'projects-add') {
-              setEditingProjectId(null)
+              navigate('projects-add', null)
+            } else {
+              navigate(id)
             }
-            setActiveMenuId(id)
           }}
-          onLogout={() => {
-            authService.logout()
-            setIsAuthenticated(false)
-          }}
+          onLogout={handleLogout}
         />
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
           <Header
             pageTitle={getPageTitle(activeMenuId)}
             onNavigate={(id) => {
               if (id === 'projects-add') {
-                setEditingProjectId(null)
+                navigate('projects-add', null)
+              } else {
+                navigate(id)
               }
-              setActiveMenuId(id)
             }}
-            onLogout={() => {
-              authService.logout()
-              setIsAuthenticated(false)
-            }}
+            onLogout={handleLogout}
           />
           <main className="flex-1 overflow-y-auto bg-black">
             {renderContent()}
