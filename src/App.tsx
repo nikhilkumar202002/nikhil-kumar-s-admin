@@ -6,6 +6,7 @@ import MainDashboard from './pages/dashboard/MainDashboard'
 import ProjectsList from './pages/projects/ProjectsList'
 import ProjectForm from './pages/projects/ProjectForm'
 import ChangePassword from './pages/auth/ChangePassword'
+import ProfileView from './pages/auth/ProfileView'
 import authService from './utils/auth.service'
 
 export default function App() {
@@ -89,6 +90,13 @@ export default function App() {
             projectId={editingProjectId}
             onCancel={() => setActiveMenuId('projects-all')}
             onSuccess={() => setActiveMenuId('projects-all')}
+          />
+        )
+
+      case 'profile-me':
+        return (
+          <ProfileView
+            onChangePassword={() => setActiveMenuId('profile-password')}
           />
         )
 

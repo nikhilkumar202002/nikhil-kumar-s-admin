@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import authService, { type User } from '../../utils/auth.service'
+import authService, { type User, USER_UPDATED_EVENT } from '../../utils/auth.service'
 import { BASE_SERVER_URL } from '../../utils/axios.service'
 import projectService, {
   type Project,
@@ -44,8 +44,22 @@ export default function MainDashboard({
   const [isLoadingProjects, setIsLoadingProjects] = useState(true)
 
   useEffect(() => {
+    const handleUserUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<User | null>
+      if (customEvent.detail) {
+        setUser(customEvent.detail)
+      } else {
+        setUser(authService.getStoredUser())
+      }
+    }
+
+    window.addEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+    window.addEventListener('storage', handleUserUpdate)
+
     authService.getCurrentUser()
-      .then((data) => setUser(data))
+      .then((data) => {
+        if (data) setUser(data)
+      })
       .catch(() => {})
 
     // Load live project statistics
@@ -58,6 +72,11 @@ export default function MainDashboard({
       .then((res) => setLiveProjects(res.projects))
       .catch(() => {})
       .finally(() => setIsLoadingProjects(false))
+
+    return () => {
+      window.removeEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+      window.removeEventListener('storage', handleUserUpdate)
+    }
   }, [])
 
   // Sample Inquiries Data

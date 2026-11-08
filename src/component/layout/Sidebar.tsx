@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import authService, { type User } from '../../utils/auth.service'
+import authService, { type User, USER_UPDATED_EVENT } from '../../utils/auth.service'
 import axiosService from '../../utils/axios.service'
 import {
   LayoutDashboard,
@@ -89,13 +89,31 @@ export default function Sidebar({
   }, [logoUrl])
 
   useEffect(() => {
-    // Sync current logged-in user details from /users/me
+    const handleUserUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<User | null>
+      if (customEvent.detail) {
+        setCurrentUser(customEvent.detail)
+      } else {
+        setCurrentUser(authService.getStoredUser())
+      }
+    }
+
+    window.addEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+    window.addEventListener('storage', handleUserUpdate)
+
     authService
       .getCurrentUser()
-      .then((user) => setCurrentUser(user))
+      .then((user) => {
+        if (user) setCurrentUser(user)
+      })
       .catch(() => {
         // Fallback to cached user if already stored
       })
+
+    return () => {
+      window.removeEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+      window.removeEventListener('storage', handleUserUpdate)
+    }
   }, [])
 
   const menuSections: MenuSection[] = [

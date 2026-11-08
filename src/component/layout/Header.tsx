@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import authService, { type User } from '../../utils/auth.service'
+import authService, { type User, USER_UPDATED_EVENT } from '../../utils/auth.service'
 import {
   Search,
   Bell,
@@ -43,14 +43,33 @@ export default function Header({
   const notificationsRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Sync user details on mount
+  // Sync user details on mount and listen for real-time profile updates
   useEffect(() => {
+    const handleUserUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<User | null>
+      if (customEvent.detail) {
+        setUser(customEvent.detail)
+      } else {
+        setUser(authService.getStoredUser())
+      }
+    }
+
+    window.addEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+    window.addEventListener('storage', handleUserUpdate)
+
     authService
       .getCurrentUser()
-      .then((data) => setUser(data))
+      .then((data) => {
+        if (data) setUser(data)
+      })
       .catch(() => {
         // Fallback to cached user
       })
+
+    return () => {
+      window.removeEventListener(USER_UPDATED_EVENT, handleUserUpdate)
+      window.removeEventListener('storage', handleUserUpdate)
+    }
   }, [])
 
   // Keyboard shortcut listener (Cmd+K / Ctrl+K)

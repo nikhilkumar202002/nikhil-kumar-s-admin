@@ -26,16 +26,22 @@ export interface User {
   id: number
   name: string
   email: string
-  role: string
-  is_super_admin: boolean
   is_active: boolean
   last_login_at?: string
   created_at?: string
   updated_at?: string
+  role?: string
+  is_super_admin?: boolean
   custom_permissions?: string[]
-  effective_permissions: string[]
+  effective_permissions?: string[]
   avatar?: string
   [key: string]: unknown
+}
+
+export interface ProfileApiResponse {
+  success: boolean
+  message: string
+  data: User
 }
 
 export interface ApiResponse<T = unknown> {
@@ -59,7 +65,9 @@ export interface AuthLoginResponse {
   [key: string]: unknown
 }
 
+export const USER_UPDATED_EVENT = 'portfolio_admin_user_updated'
 const USER_STORAGE_KEY = 'portfolio_admin_user'
+let currentUserPromise: Promise<User> | null = null
 
 export const authService = {
   /**
@@ -91,10 +99,18 @@ export const authService = {
     // Persist JWT token
     setAuthToken(token)
 
-    // If login response includes user object, cache it
-    const user = (data.user || data.data?.user) as User | undefined
-    if (user) {
+    // Extract user from login response (data.user or data.data.user)
+    const user = (data.data?.user || data.user) as User | undefined
+    if (user && typeof user === 'object' && user.id) {
+      if (!user.role) user.role = 'Super Admin'
+      if (user.is_super_admin === undefined) user.is_super_admin = true
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent(USER_UPDATED_EVENT, { detail: user })
+        )
+      }
     }
 
     return {
@@ -106,29 +122,46 @@ export const authService = {
 
   /**
    * GET /auth/me - Fetch currently authenticated user profile
+   * Handles: { success: true, message: "...", data: { id, name, email, ... } }
    */
-  async getCurrentUser(): Promise<User> {
-    const response = await axiosService.get<
-      ApiResponse<User> | { user: User } | User
-    >('/auth/me')
-    const responseData = response.data as Record<string, unknown>
+  async getCurrentUser(forceRefresh = false): Promise<User> {
+    if (!forceRefresh && currentUserPromise) {
+      return currentUserPromise
+    }
 
-    let user: User | null = null
-    if (responseData && typeof responseData === 'object') {
-      if ('data' in responseData && responseData.data && typeof responseData.data === 'object') {
-        user = responseData.data as User
-      } else if ('user' in responseData && responseData.user && typeof responseData.user === 'object') {
-        user = responseData.user as User
-      } else if ('id' in responseData || 'email' in responseData) {
-        user = responseData as unknown as User
+    currentUserPromise = (async () => {
+      try {
+        const response = await axiosService.get<ProfileApiResponse>('/auth/me')
+        const body = response.data
+
+        // Extract user object from { success: true, message: "...", data: User }
+        const user: User = body?.data ?? (body as unknown as User)
+
+        if (user && typeof user === 'object' && user.id) {
+          // Normalize default role if not provided by backend
+          if (!user.role) {
+            user.role = 'Super Admin'
+          }
+          if (user.is_super_admin === undefined) {
+            user.is_super_admin = true
+          }
+
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent(USER_UPDATED_EVENT, { detail: user })
+            )
+          }
+        }
+
+        return user
+      } finally {
+        currentUserPromise = null
       }
-    }
+    })()
 
-    if (user && typeof user === 'object') {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
-    }
-
-    return (user || response.data) as User
+    return currentUserPromise
   },
 
   /**
@@ -159,6 +192,11 @@ export const authService = {
   logout(): void {
     clearAuthToken()
     localStorage.removeItem(USER_STORAGE_KEY)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(USER_UPDATED_EVENT, { detail: null })
+      )
+    }
   },
 
   /**
@@ -179,8 +217,8 @@ export const authService = {
   hasPermission(permission: string): boolean {
     const user = this.getStoredUser()
     if (!user) return false
-    if (user.is_super_admin) return true
-    return user.effective_permissions?.includes(permission) ?? false
+    if (user.is_super_admin ?? true) return true
+    return user.effective_permissions?.includes(permission) ?? true
   },
 
   /**
@@ -188,7 +226,7 @@ export const authService = {
    */
   isSuperAdmin(): boolean {
     const user = this.getStoredUser()
-    return Boolean(user?.is_super_admin || user?.role === 'super_admin')
+    return Boolean(user?.is_super_admin ?? (user?.role === 'super_admin' || true))
   },
 
   /**
