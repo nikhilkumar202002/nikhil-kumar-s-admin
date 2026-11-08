@@ -10,6 +10,18 @@ export interface LoginCredentials {
   password: string
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
+}
+
+export interface ChangePasswordResponse {
+  success?: boolean
+  message?: string
+  data?: unknown
+  [key: string]: unknown
+}
+
 export interface User {
   id: number
   name: string
@@ -71,6 +83,7 @@ export const authService = {
 
     if (!token) {
       throw new Error(
+        data.message ||
         'Authentication succeeded but no JWT token was received from server.'
       )
     }
@@ -92,17 +105,52 @@ export const authService = {
   },
 
   /**
-   * GET /users/me - Fetch currently authenticated user profile
+   * GET /auth/me - Fetch currently authenticated user profile
    */
   async getCurrentUser(): Promise<User> {
-    const response = await axiosService.get<ApiResponse<User>>('/users/me')
-    const user = response.data.data
+    const response = await axiosService.get<
+      ApiResponse<User> | { user: User } | User
+    >('/auth/me')
+    const responseData = response.data as Record<string, unknown>
+
+    let user: User | null = null
+    if (responseData && typeof responseData === 'object') {
+      if ('data' in responseData && responseData.data && typeof responseData.data === 'object') {
+        user = responseData.data as User
+      } else if ('user' in responseData && responseData.user && typeof responseData.user === 'object') {
+        user = responseData.user as User
+      } else if ('id' in responseData || 'email' in responseData) {
+        user = responseData as unknown as User
+      }
+    }
 
     if (user && typeof user === 'object') {
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
     }
 
-    return user
+    return (user || response.data) as User
+  },
+
+  /**
+   * PATCH /auth/password - Change/edit password with currentPassword and newPassword
+   */
+  async changePassword(
+    payload: ChangePasswordPayload
+  ): Promise<ChangePasswordResponse> {
+    const response = await axiosService.patch<ChangePasswordResponse>(
+      '/auth/password',
+      payload
+    )
+    return response.data
+  },
+
+  /**
+   * Alias for changePassword
+   */
+  async updatePassword(
+    payload: ChangePasswordPayload
+  ): Promise<ChangePasswordResponse> {
+    return this.changePassword(payload)
   },
 
   /**

@@ -15,7 +15,6 @@ import {
   Upload,
   Trash2,
   Star,
-  Plus,
   Image,
   LayoutTemplate,
   X,
@@ -63,13 +62,11 @@ export default function ProjectForm({
 
   // 1. Featured Image (Card / Thumbnail)
   const [featuredImageUrl, setFeaturedImageUrl] = useState('')
-  const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null)
-  const [featuredImagePreview, setFeaturedImagePreview] = useState<string>('')
+  const [featuredImageFile] = useState<File | null>(null)
 
   // 2. Banner Image (Hero Header)
   const [bannerImageUrl, setBannerImageUrl] = useState('')
-  const [bannerImageFile, setBannerImageFile] = useState<File | null>(null)
-  const [bannerImagePreview, setBannerImagePreview] = useState<string>('')
+  const [bannerImageFile] = useState<File | null>(null)
 
   // Technologies
   const [technologies, setTechnologies] = useState<string[]>([])
@@ -80,7 +77,6 @@ export default function ProjectForm({
   // Project Gallery (Edit mode only)
   const [galleryImages, setGalleryImages] = useState<ProjectImage[]>([])
   const [isUploadingGallery, setIsUploadingGallery] = useState(false)
-  const [uploadRole, setUploadRole] = useState<'gallery' | 'featured' | 'banner'>('gallery')
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-generate slug from title
@@ -167,36 +163,10 @@ export default function ProjectForm({
     setTechnologies(technologies.filter((t) => t !== techToRemove))
   }
 
-  // Handle Featured Image file selection
-  const handleFeaturedFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setFeaturedImageFile(file)
-      const reader = new FileReader()
-      reader.onload = () => {
-        setFeaturedImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  // Handle Banner Image file selection
-  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setBannerImageFile(file)
-      const reader = new FileReader()
-      reader.onload = () => {
-        setBannerImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
   // Gallery Image Upload (Edit Mode) with role flag support
   const handleGalleryUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    roleType: 'gallery' | 'featured' | 'banner' = uploadRole
+    roleType: 'gallery' | 'featured' | 'banner' = 'gallery'
   ) => {
     const file = e.target.files?.[0]
     if (!file || !projectId) return
@@ -296,6 +266,34 @@ export default function ProjectForm({
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
       setErrorMessage(errorObj.message || 'Failed to delete gallery image')
+    }
+  }
+
+  // Image Upload handler for gallery
+  const handleImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleGalleryUpload(e)
+  }
+
+  // Delete uploaded image
+  const handleDeleteUploadedImage = (img: ProjectImage) => {
+    handleDeleteGalleryImage(img.id)
+  }
+
+  // Select as featured card image
+  const handleSelectAsFeatured = (img: ProjectImage) => {
+    if (projectId) {
+      handleSetFeatured(img.id)
+    } else {
+      setFeaturedImageUrl(img.image_url)
+    }
+  }
+
+  // Select as cover / banner image
+  const handleSelectAsCover = (img: ProjectImage) => {
+    if (projectId) {
+      handleSetBanner(img.id)
+    } else {
+      setBannerImageUrl(img.image_url)
     }
   }
 
