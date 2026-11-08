@@ -14,6 +14,11 @@ import {
   Briefcase,
   ToggleLeft,
   ToggleRight,
+  LayoutList,
+  LayoutGrid,
+  Calendar,
+  Clock,
+  Eye,
 } from 'lucide-react'
 import categoryService, { type Category } from '../../utils/category.service'
 
@@ -26,12 +31,13 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [statusMessage, setStatusMessage] = useState<{
     type: 'success' | 'error'
     text: string
   } | null>(null)
 
-  // Modal / Form state for Add or Edit
+  // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [name, setName] = useState('')
@@ -41,7 +47,12 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
   const [isSaving, setIsSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
-  // Delete confirmation
+  // Single Category View Modal state
+  const [viewingCategory, setViewingCategory] = useState<Category | null>(null)
+  const [isLoadingSingle, setIsLoadingSingle] = useState(false)
+  const [singleViewError, setSingleViewError] = useState('')
+
+  // Delete confirmation state
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const fetchCategories = async (showRefresh = false) => {
@@ -85,6 +96,30 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
     setStatus(cat.status ?? true)
     setFormError('')
     setIsModalOpen(true)
+  }
+
+  // Single category modal handler (fetches /project-categories/:id or /categories/:id)
+  const handleOpenSingleView = async (cat: Category) => {
+    setViewingCategory(cat)
+    setIsLoadingSingle(true)
+    setSingleViewError('')
+
+    try {
+      const fullCategory = await categoryService.getById(cat.id)
+      if (fullCategory) {
+        setViewingCategory(fullCategory)
+      }
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string }
+      setSingleViewError(errorObj.message || 'Could not refresh latest details')
+    } finally {
+      setIsLoadingSingle(false)
+    }
+  }
+
+  const handleCloseSingleView = () => {
+    setViewingCategory(null)
+    setSingleViewError('')
   }
 
   const handleNameChange = (val: string) => {
@@ -173,6 +208,36 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
       (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '—'
+    try {
+      return new Date(dateStr).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const formatFullDate = (dateStr?: string) => {
+    if (!dateStr) return '—'
+    try {
+      return new Date(dateStr).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const totalProjects = categories.reduce(
+    (acc, c) => acc + (c.projects_count ?? c.project_count ?? 0),
+    0
+  )
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Top Header */}
@@ -209,6 +274,43 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
         </div>
       </div>
 
+      {/* Summary Stat Pills */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+              Total Categories
+            </span>
+            <div className="text-lg font-bold text-white">{categories.length}</div>
+          </div>
+          <Tag className="w-5 h-5 text-zinc-600" />
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+              Total Projects Linked
+            </span>
+            <div className="text-lg font-bold text-white">{totalProjects}</div>
+          </div>
+          <Briefcase className="w-5 h-5 text-zinc-600" />
+        </div>
+
+        <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+              Active Filters
+            </span>
+            <div className="text-lg font-bold text-emerald-400">
+              {categories.filter((c) => c.status !== false).length}
+            </div>
+          </div>
+          <span className="w-3 h-3 rounded-full bg-emerald-400/20 border border-emerald-400 flex items-center justify-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          </span>
+        </div>
+      </div>
+
       {/* Status Alerts */}
       {statusMessage?.type === 'success' && (
         <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-center gap-2.5 text-xs text-emerald-400">
@@ -224,21 +326,52 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="relative max-w-md">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-          <Search className="w-4 h-4" />
+      {/* Controls Bar: Search + View Switcher */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
+            <Search className="w-4 h-4" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search categories by name, slug or description..."
+            className="w-full pl-10 pr-4 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all"
+          />
         </div>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search categories by name, slug or description..."
-          className="w-full pl-10 pr-4 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all"
-        />
+
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-900/80 border border-zinc-800 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-zinc-800 text-white'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+            title="Table View"
+          >
+            <LayoutList className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('grid')}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              viewMode === 'grid'
+                ? 'bg-zinc-800 text-white'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+            title="Grid Cards View"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Categories Grid */}
+      {/* Content Rendering */}
       {isLoading ? (
         <div className="py-20 flex flex-col items-center justify-center gap-3 text-zinc-500">
           <Loader2 className="w-6 h-6 animate-spin" />
@@ -264,7 +397,131 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
             </button>
           )}
         </div>
+      ) : viewMode === 'table' ? (
+        /* Table View */
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-400 uppercase tracking-wider text-[10px] bg-zinc-900/50">
+                  <th className="py-3 px-4 w-16">#ID</th>
+                  <th className="py-3 px-4 min-w-[180px]">Category Name</th>
+                  <th className="py-3 px-4">Slug</th>
+                  <th className="py-3 px-4 min-w-[200px]">Description</th>
+                  <th className="py-3 px-4 text-center">Projects</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Created</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60">
+                {filteredCategories.map((cat) => {
+                  const count = cat.projects_count ?? cat.project_count ?? 0
+                  const isActive = cat.status !== false
+
+                  return (
+                    <tr
+                      key={cat.id}
+                      className="hover:bg-zinc-900/40 transition-colors group cursor-pointer"
+                      onClick={() => handleOpenSingleView(cat)}
+                    >
+                      {/* ID */}
+                      <td className="py-3.5 px-4 font-mono text-zinc-500">
+                        #{cat.id}
+                      </td>
+
+                      {/* Name & Active Badge */}
+                      <td className="py-3.5 px-4 font-semibold text-white">
+                        <div className="flex items-center gap-2">
+                          <span className="group-hover:text-cyan-400 transition-colors">
+                            {cat.name}
+                          </span>
+                          <span
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                              isActive ? 'bg-emerald-400' : 'bg-zinc-600'
+                            }`}
+                            title={isActive ? 'Active' : 'Inactive'}
+                          />
+                        </div>
+                      </td>
+
+                      {/* Slug */}
+                      <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-400">
+                        /{cat.slug}
+                      </td>
+
+                      {/* Description */}
+                      <td className="py-3.5 px-4 text-zinc-400 max-w-xs truncate">
+                        {cat.description || <span className="text-zinc-600">—</span>}
+                      </td>
+
+                      {/* Projects Count */}
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            count > 0
+                              ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                              : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                          }`}
+                        >
+                          <Briefcase className="w-3 h-3" />
+                          <span>{count}</span>
+                        </span>
+                      </td>
+
+                      {/* Created At */}
+                      <td className="py-3.5 px-4 whitespace-nowrap text-zinc-400 text-[11px]">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3 h-3 text-zinc-500" />
+                          <span>{formatDate(cat.created_at)}</span>
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td
+                        className="py-3.5 px-4 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleView(cat)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-900 transition-colors cursor-pointer"
+                            title="View Category Details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(cat)}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+                            title="Edit Category"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            disabled={deletingId === cat.id}
+                            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-950/30 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Delete Category"
+                          >
+                            {deletingId === cat.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* Grid Cards View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredCategories.map((cat) => {
             const count = cat.projects_count ?? cat.project_count ?? 0
@@ -277,13 +534,16 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0">
-                        <Tag className="w-4 h-4 text-zinc-400" />
+                    <div
+                      className="flex items-center gap-2.5 cursor-pointer"
+                      onClick={() => handleOpenSingleView(cat)}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0 group-hover:border-zinc-700 transition-colors">
+                        <Tag className="w-4 h-4 text-zinc-400 group-hover:text-cyan-400 transition-colors" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-bold text-white leading-tight">
+                          <h3 className="text-sm font-bold text-white leading-tight group-hover:text-cyan-400 transition-colors">
                             {cat.name}
                           </h3>
                           <span
@@ -300,6 +560,14 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
                     </div>
 
                     <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSingleView(cat)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-900 transition-colors cursor-pointer"
+                        title="View Category Details"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(cat)}
@@ -352,6 +620,178 @@ export default function ProjectCategories({ onAddProject }: ProjectCategoriesPro
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal for Single Category View */}
+      {viewingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-white">
+                      Category Details
+                    </h2>
+                    <span className="font-mono text-[10px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                      ID #{viewingCategory.id}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-zinc-400 block font-mono">
+                    /{viewingCategory.slug}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseSingleView}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Error or Loading banner */}
+            {isLoadingSingle && (
+              <div className="py-2 px-3 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center gap-2 text-xs text-zinc-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                <span>Fetching latest data from server...</span>
+              </div>
+            )}
+            {singleViewError && (
+              <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 flex items-center gap-2 text-xs text-red-400">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{singleViewError}</span>
+              </div>
+            )}
+
+            {/* Body Info */}
+            <div className="space-y-4">
+              {/* Main Badge / Name */}
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Category Name
+                  </span>
+                  <span className="text-base font-bold text-white mt-0.5 block">
+                    {viewingCategory.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                      viewingCategory.status !== false
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        viewingCategory.status !== false
+                          ? 'bg-emerald-400 animate-pulse'
+                          : 'bg-zinc-600'
+                      }`}
+                    />
+                    <span>{viewingCategory.status !== false ? 'Active' : 'Inactive'}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Grid Attributes */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {/* Slug */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Slug
+                  </span>
+                  <span className="font-mono text-zinc-200 mt-1 block truncate">
+                    /{viewingCategory.slug}
+                  </span>
+                </div>
+
+                {/* Projects Count */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Linked Projects
+                  </span>
+                  <span className="text-cyan-400 font-semibold mt-1 flex items-center gap-1.5">
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>
+                      {(viewingCategory.projects_count ?? viewingCategory.project_count ?? 0)}{' '}
+                      {(viewingCategory.projects_count ?? viewingCategory.project_count ?? 0) === 1
+                        ? 'project'
+                        : 'projects'}
+                    </span>
+                  </span>
+                </div>
+
+                {/* Created Date */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Created At
+                  </span>
+                  <span className="text-zinc-300 mt-1 flex items-center gap-1.5 text-[11px]">
+                    <Calendar className="w-3 h-3 text-zinc-500" />
+                    <span>{formatFullDate(viewingCategory.created_at)}</span>
+                  </span>
+                </div>
+
+                {/* Updated Date */}
+                <div className="p-3 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block">
+                    Last Updated
+                  </span>
+                  <span className="text-zinc-300 mt-1 flex items-center gap-1.5 text-[11px]">
+                    <Clock className="w-3 h-3 text-zinc-500" />
+                    <span>{formatFullDate(viewingCategory.updated_at)}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="p-3.5 rounded-xl bg-zinc-900/30 border border-zinc-800/70">
+                <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider block mb-1">
+                  Description
+                </span>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  {viewingCategory.description || (
+                    <span className="text-zinc-500 italic">No description provided.</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const targetCat = viewingCategory
+                  handleCloseSingleView()
+                  handleOpenEdit(targetCat)
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-xs font-semibold text-white transition-colors cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Edit Category</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCloseSingleView}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-xs font-semibold text-zinc-950 transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
