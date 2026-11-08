@@ -19,10 +19,12 @@ import {
   Flag,
   RefreshCw,
   Sparkles,
+  Plus,
 } from 'lucide-react'
 import projectService, {
   type ProjectImage,
   getProjectImageUrl,
+  getImageUrlFromObject,
 } from '../../utils/project.service'
 
 export interface ProjectGalleryViewProps {
@@ -31,35 +33,80 @@ export interface ProjectGalleryViewProps {
   images: ProjectImage[]
   featuredImageUrl?: string
   bannerImageUrl?: string
+  featuredImageId?: number | string | null
+  coverImageId?: number | string | null
   isLoading?: boolean
   readOnly?: boolean
   onImagesChange?: (images: ProjectImage[]) => void
   onSelectFeatured?: (image: ProjectImage) => Promise<void> | void
   onSelectCover?: (image: ProjectImage) => Promise<void> | void
   onSelectBanner?: (image: ProjectImage) => Promise<void> | void
+  onClearFeatured?: () => void
+  onClearCover?: () => void
   onDeleteImage?: (image: ProjectImage) => Promise<void> | void
   onUploadSuccess?: () => void
   className?: string
+}
+
+// Resilient Image Thumbnail with Fallback
+export const ImageThumbnail: React.FC<{
+  url?: string | null
+  alt?: string | null
+  className?: string
+}> = ({ url, alt, className = '' }) => {
+  const [hasError, setHasError] = useState(false)
+  const resolvedUrl = getProjectImageUrl(url)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [url])
+
+  if (hasError || !resolvedUrl) {
+    return (
+      <div
+        className={`w-full h-full bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center p-2 text-zinc-500 select-none ${className}`}
+      >
+        <ImageIcon className="w-6 h-6 text-zinc-600 mb-1" />
+        <span className="text-[10px] text-zinc-500 font-mono text-center truncate max-w-[90%]">
+          {alt || 'Image Preview'}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={resolvedUrl}
+      alt={alt || 'Project media'}
+      onError={() => setHasError(true)}
+      className={className}
+      loading="lazy"
+    />
+  )
 }
 
 export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
   projectId,
   projectTitle,
   images: propImages,
-  featuredImageUrl,
-  bannerImageUrl,
+  featuredImageUrl: propFeaturedUrl,
+  bannerImageUrl: propBannerUrl,
+  featuredImageId,
+  coverImageId,
   isLoading: initialLoading = false,
   readOnly = false,
   onImagesChange,
   onSelectFeatured,
   onSelectCover,
   onSelectBanner,
+  onClearFeatured,
+  onClearCover,
   onDeleteImage,
   onUploadSuccess,
   className = '',
 }) => {
   const [images, setImages] = useState<ProjectImage[]>(propImages)
-  const [filter, setFilter] = useState<'all' | 'featured' | 'cover' | 'banner' | 'gallery'>('all')
+  const [filter, setFilter] = useState<'all' | 'featured' | 'cover' | 'banner'>('all')
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [toastMessage, setToastMessage] = useState('')
@@ -81,7 +128,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
   const [deletingImageId, setDeletingImageId] = useState<number | string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Action Loading tracking (e.g. promoting)
+  // Action Loading tracking
   const [actionInProgress, setActionInProgress] = useState<{ id: number | string; action: string } | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -104,7 +151,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       const refreshed = await projectService.getGalleryImages(projectId)
       setImages(refreshed)
       if (onImagesChange) onImagesChange(refreshed)
-      showToast('Gallery refreshed')
+      showToast('Gallery refreshed from server')
     } catch {
       showToast('Failed to refresh gallery')
     } finally {
@@ -130,26 +177,60 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [lightboxIndex, images.length])
 
+  // Resolve matching image for featured / cover
+  const activeFeatured = images.find(
+    (i) =>
+      i.is_featured ||
+      (featuredImageId && i.id === featuredImageId) ||
+      (propFeaturedUrl && (i.image_url === propFeaturedUrl || i.url === propFeaturedUrl))
+  )
+
+  const activeCover = images.find(
+    (i) =>
+      i.is_cover ||
+      i.is_banner ||
+      (coverImageId && i.id === coverImageId) ||
+      (propBannerUrl && (i.image_url === propBannerUrl || i.url === propBannerUrl))
+  )
+
   // Filter images based on selected tab
   const filteredImages = images.filter((img) => {
-    const isFeat = img.is_featured || (featuredImageUrl && img.image_url === featuredImageUrl)
-    const isCov = img.is_cover || (bannerImageUrl && img.image_url === bannerImageUrl)
-    const isBan = img.is_banner || (bannerImageUrl && img.image_url === bannerImageUrl)
+    const isFeat =
+      img.is_featured ||
+      img.id === featuredImageId ||
+      (propFeaturedUrl && (img.image_url === propFeaturedUrl || img.url === propFeaturedUrl))
+    const isCov =
+      img.is_cover ||
+      img.is_banner ||
+      img.id === coverImageId ||
+      (propBannerUrl && (img.image_url === propBannerUrl || img.url === propBannerUrl))
+    const isBan =
+      img.is_banner ||
+      (propBannerUrl && (img.image_url === propBannerUrl || img.url === propBannerUrl))
 
     if (filter === 'featured') return isFeat
     if (filter === 'cover') return isCov
     if (filter === 'banner') return isBan
-    if (filter === 'gallery') return img.is_gallery !== false
     return true
   })
 
   // Count stats
   const stats = {
     total: images.length,
-    featured: images.filter((i) => i.is_featured || (featuredImageUrl && i.image_url === featuredImageUrl)).length,
-    cover: images.filter((i) => i.is_cover || (bannerImageUrl && i.image_url === bannerImageUrl)).length,
+    featured: images.filter(
+      (i) =>
+        i.is_featured ||
+        i.id === featuredImageId ||
+        (propFeaturedUrl && (i.image_url === propFeaturedUrl || i.url === propFeaturedUrl))
+    ).length,
+    cover: images.filter(
+      (i) =>
+        i.is_cover ||
+        i.is_banner ||
+        i.id === coverImageId ||
+        (propBannerUrl && (i.image_url === propBannerUrl || i.url === propBannerUrl))
+    ).length,
     banner: images.filter((i) => i.is_banner).length,
-    gallery: images.filter((i) => i.is_gallery !== false).length,
   }
 
   // Handle Upload
@@ -161,9 +242,10 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
     setUploadError('')
 
     try {
+      const uploadedImages: ProjectImage[] = []
+
       if (projectId) {
-        // Upload directly to API via projectService.createImage
-        const uploadedImages: ProjectImage[] = []
+        // Direct gallery creation via POST /projects/:id/images
         for (const file of fileList) {
           const res = await projectService.createImage(projectId, {
             image: file,
@@ -171,31 +253,73 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
             is_featured: images.length === 0,
             is_banner: false,
           })
-          if (res) uploadedImages.push(res)
+          if (res) {
+            uploadedImages.push({
+              ...res,
+              image_url: getImageUrlFromObject(res),
+            })
+          }
+        }
+
+        // Fetch fresh database list to ensure complete synchronization
+        const refreshed = await projectService.getGalleryImages(projectId).catch(() => null)
+        const updated = refreshed && refreshed.length > 0 ? refreshed : [...images, ...uploadedImages]
+        setImages(updated)
+        if (onImagesChange) onImagesChange(updated)
+        if (onUploadSuccess) onUploadSuccess()
+
+        // Auto-select first uploaded image as featured if not set yet
+        if (!propFeaturedUrl && updated.length > 0) {
+          await handleSetFeatured(updated[0])
+        }
+        showToast(`${uploadedImages.length} image(s) uploaded successfully!`)
+      } else {
+        // Create Mode: Upload via POST /projects/upload to get live server URLs immediately
+        try {
+          for (const file of fileList) {
+            const [uploaded] = await projectService.uploadMedia(file)
+            if (uploaded) {
+              uploadedImages.push({
+                ...uploaded,
+                id: uploaded.id || `temp-${Date.now()}-${Math.random()}`,
+                image_url: getImageUrlFromObject(uploaded) || URL.createObjectURL(file),
+                is_cover: images.length === 0 && uploadedImages.length === 0,
+                is_featured: images.length === 0 && uploadedImages.length === 0,
+                is_banner: false,
+                is_gallery: true,
+                display_order: images.length + uploadedImages.length + 1,
+                sort_order: images.length + uploadedImages.length + 1,
+                created_at: new Date().toISOString(),
+              })
+            }
+          }
+        } catch {
+          // Fallback to local object URLs if upload endpoint fails
+          fileList.forEach((file, idx) => {
+            const localUrl = URL.createObjectURL(file)
+            uploadedImages.push({
+              id: `staged-${Date.now()}-${idx}`,
+              image_url: localUrl,
+              is_cover: images.length === 0 && idx === 0,
+              is_featured: images.length === 0 && idx === 0,
+              is_banner: false,
+              is_gallery: true,
+              display_order: images.length + idx + 1,
+              sort_order: images.length + idx + 1,
+              created_at: new Date().toISOString(),
+            })
+          })
         }
 
         const updated = [...images, ...uploadedImages]
         setImages(updated)
         if (onImagesChange) onImagesChange(updated)
-        if (onUploadSuccess) onUploadSuccess()
-        showToast(`${uploadedImages.length} image(s) uploaded successfully!`)
-      } else {
-        // Optimistic / local staging
-        const localImages: ProjectImage[] = fileList.map((file, idx) => ({
-          id: `temp-${Date.now()}-${idx}`,
-          image_url: URL.createObjectURL(file),
-          is_cover: images.length === 0 && idx === 0,
-          is_featured: images.length === 0 && idx === 0,
-          is_banner: false,
-          is_gallery: true,
-          display_order: images.length + idx + 1,
-          sort_order: images.length + idx + 1,
-          created_at: new Date().toISOString(),
-        }))
-        const updated = [...images, ...localImages]
-        setImages(updated)
-        if (onImagesChange) onImagesChange(updated)
-        showToast(`${localImages.length} image(s) staged`)
+
+        // Auto-select first image as featured
+        if (!propFeaturedUrl && updated.length > 0) {
+          handleSetFeatured(updated[0])
+        }
+        showToast(`${uploadedImages.length} image(s) uploaded to gallery!`)
       }
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
@@ -298,7 +422,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
         await projectService.deleteImage(projectId, img.id)
       }
 
-      const updated = images.filter((i) => i.id !== img.id)
+      const updated = images.filter((i) => i.id !== img.id && i.image_url !== img.image_url)
       setImages(updated)
       if (onImagesChange) onImagesChange(updated)
       setDeletingImageId(null)
@@ -403,7 +527,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
   const activeLightboxImage = lightboxIndex !== null ? images[lightboxIndex] : null
 
   return (
-    <div className={`space-y-4 font-sans ${className}`}>
+    <div className={`space-y-6 font-sans ${className}`}>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-medium text-white shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -412,122 +536,8 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
         </div>
       )}
 
-      {/* Gallery Header Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-zinc-950/90 border border-zinc-800">
-        {/* Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              filter === 'all'
-                ? 'bg-white text-zinc-950 shadow-xs'
-                : 'bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-          >
-            All Images ({stats.total})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('featured')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              filter === 'featured'
-                ? 'bg-amber-500 text-black shadow-xs'
-                : 'bg-zinc-900/60 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800'
-            }`}
-          >
-            <Star className="w-3 h-3" />
-            <span>Featured ({stats.featured})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('cover')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              filter === 'cover'
-                ? 'bg-cyan-500 text-black shadow-xs'
-                : 'bg-zinc-900/60 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800'
-            }`}
-          >
-            <LayoutTemplate className="w-3 h-3" />
-            <span>Cover ({stats.cover})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('banner')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              filter === 'banner'
-                ? 'bg-indigo-500 text-white shadow-xs'
-                : 'bg-zinc-900/60 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800'
-            }`}
-          >
-            <Flag className="w-3 h-3" />
-            <span>Banner ({stats.banner})</span>
-          </button>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          {projectId && (
-            <button
-              type="button"
-              onClick={reloadImages}
-              disabled={isRefreshing}
-              className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer disabled:opacity-50"
-              title="Refresh images"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-          )}
-
-          {!readOnly && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/png,image/jpeg,image/webp,image/avif"
-                onChange={(e) => e.target.files && handleFilesSelected(e.target.files)}
-                className="hidden"
-              />
-              <button
-                type="button"
-                disabled={isUploading}
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Uploading...</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Images</span>
-                  </>
-                )}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {uploadError && (
-        <div className="p-3 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-300 flex items-center justify-between">
-          <span>{uploadError}</span>
-          <button onClick={() => setUploadError('')} className="text-red-400 hover:text-white">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Gallery Grid or Drag-and-Drop Area */}
-      {initialLoading ? (
-        <div className="py-20 flex flex-col items-center justify-center gap-2 text-zinc-500">
-          <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
-          <span className="text-xs">Loading project gallery...</span>
-        </div>
-      ) : filteredImages.length === 0 ? (
+      {/* 1. GALLERY UPLOAD DROPZONE */}
+      {!readOnly && (
         <div
           onDragOver={(e) => {
             e.preventDefault()
@@ -539,36 +549,269 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
             setIsDragging(false)
             if (e.dataTransfer.files) handleFilesSelected(e.dataTransfer.files)
           }}
-          onClick={() => !readOnly && fileInputRef.current?.click()}
-          className={`py-16 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all ${
+          onClick={() => fileInputRef.current?.click()}
+          className={`p-6 sm:p-8 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-3 text-center group ${
             isDragging
-              ? 'border-white bg-zinc-900/60'
-              : 'border-zinc-800/80 hover:border-zinc-700 bg-zinc-950/50'
-          } ${readOnly ? '' : 'cursor-pointer group'}`}
+              ? 'border-white bg-zinc-900/80'
+              : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/60 hover:bg-zinc-900/30'
+          }`}
         >
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white transition-colors">
-            <ImageIcon className="w-5 h-5" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp,image/avif"
+            onChange={(e) => e.target.files && handleFilesSelected(e.target.files)}
+            className="hidden"
+          />
+
+          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 group-hover:text-white group-hover:scale-105 transition-all shadow-md">
+            {isUploading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-white" />
+            ) : (
+              <Upload className="w-6 h-6" />
+            )}
           </div>
-          <div className="text-center">
-            <p className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+
+          <div>
+            <p className="text-sm font-bold text-white tracking-tight">
+              {isUploading ? 'Uploading images to gallery...' : 'Drop project images here to upload'}
+            </p>
+            <p className="text-xs text-zinc-400 mt-1">
+              or <span className="text-white underline font-medium">browse from your computer</span> • Supports PNG, JPG, WebP, AVIF
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1 text-[11px] text-zinc-500">
+            <span>Upload multiple images</span>
+            <span>•</span>
+            <span>Choose Featured & Cover directly from the grid below</span>
+          </div>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800 text-xs text-red-300 flex items-center justify-between">
+          <span>{uploadError}</span>
+          <button onClick={() => setUploadError('')} className="text-red-400 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 2. ACTIVE SELECTION SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {/* Featured Card Selection Preview */}
+        <div
+          className={`p-3.5 rounded-2xl border transition-all ${
+            activeFeatured
+              ? 'bg-amber-950/15 border-amber-500/40 ring-1 ring-amber-500/20 shadow-sm'
+              : 'bg-zinc-900/30 border-zinc-800/80'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-black border border-zinc-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                {activeFeatured ? (
+                  <ImageThumbnail
+                    url={getImageUrlFromObject(activeFeatured)}
+                    alt="Featured"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Star className="w-5 h-5 text-zinc-600" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
+                  Featured Card Image
+                </span>
+                <span className="text-xs font-semibold text-white truncate block mt-0.5">
+                  {activeFeatured
+                    ? activeFeatured.caption || `Image ID #${activeFeatured.id}`
+                    : 'Not selected yet'}
+                </span>
+                <span className="text-[11px] text-zinc-500 block truncate">
+                  {activeFeatured
+                    ? 'Card & listing thumbnail active'
+                    : 'Click "Set Featured" on any image below'}
+                </span>
+              </div>
+            </div>
+
+            {activeFeatured && !readOnly && onClearFeatured && (
+              <button
+                type="button"
+                onClick={onClearFeatured}
+                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+                title="Clear featured image"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Cover Image Selection Preview */}
+        <div
+          className={`p-3.5 rounded-2xl border transition-all ${
+            activeCover
+              ? 'bg-cyan-950/15 border-cyan-500/40 ring-1 ring-cyan-500/20 shadow-sm'
+              : 'bg-zinc-900/30 border-zinc-800/80'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-black border border-zinc-800 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                {activeCover ? (
+                  <ImageThumbnail
+                    url={getImageUrlFromObject(activeCover)}
+                    alt="Cover"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <LayoutTemplate className="w-5 h-5 text-zinc-600" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block">
+                  Cover Banner Image
+                </span>
+                <span className="text-xs font-semibold text-white truncate block mt-0.5">
+                  {activeCover
+                    ? activeCover.caption || `Image ID #${activeCover.id}`
+                    : 'Not selected yet'}
+                </span>
+                <span className="text-[11px] text-zinc-500 block truncate">
+                  {activeCover
+                    ? 'Hero header banner active'
+                    : 'Click "Set Cover" on any image below'}
+                </span>
+              </div>
+            </div>
+
+            {activeCover && !readOnly && onClearCover && (
+              <button
+                type="button"
+                onClick={onClearCover}
+                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+                title="Clear cover image"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. GALLERY TOOLBAR & FILTER BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-zinc-950 border border-zinc-800/90">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <ImageIcon className="w-4 h-4 text-zinc-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
+              All Uploaded Images ({images.length})
+            </h3>
+          </div>
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              filter === 'all'
+                ? 'bg-white text-zinc-950 shadow-xs'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+            }`}
+          >
+            All ({stats.total})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('featured')}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              filter === 'featured'
+                ? 'bg-amber-500 text-black shadow-xs'
+                : 'bg-zinc-900 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800'
+            }`}
+          >
+            <Star className="w-3 h-3" />
+            <span>Featured ({stats.featured})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('cover')}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              filter === 'cover'
+                ? 'bg-cyan-500 text-black shadow-xs'
+                : 'bg-zinc-900 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800'
+            }`}
+          >
+            <LayoutTemplate className="w-3 h-3" />
+            <span>Cover ({stats.cover})</span>
+          </button>
+
+          {projectId && (
+            <button
+              type="button"
+              onClick={reloadImages}
+              disabled={isRefreshing}
+              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer disabled:opacity-50 ml-1"
+              title="Refresh images from server"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 4. GALLERY GRID */}
+      {initialLoading ? (
+        <div className="py-20 flex flex-col items-center justify-center gap-2 text-zinc-500">
+          <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+          <span className="text-xs">Loading project gallery...</span>
+        </div>
+      ) : filteredImages.length === 0 ? (
+        <div
+          onClick={() => !readOnly && fileInputRef.current?.click()}
+          className={`py-14 border border-dashed border-zinc-800 rounded-2xl flex flex-col items-center justify-center gap-2.5 text-center bg-zinc-950/40 ${
+            readOnly ? '' : 'cursor-pointer hover:border-zinc-700 group'
+          }`}
+        >
+          <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-white">
+            <Plus className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-300 group-hover:text-white">
               {filter === 'all'
-                ? 'No images in project gallery'
-                : `No images matching "${filter}" filter`}
+                ? 'No images uploaded yet'
+                : `No images under "${filter}" filter`}
             </p>
-            <p className="text-[11px] text-zinc-500 mt-1">
-              {!readOnly ? 'Click to browse or drag and drop images here' : 'This project has no images'}
-            </p>
+            {!readOnly && (
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Click here or use the upload area above to add images
+              </p>
+            )}
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredImages.map((img, idx) => {
+            const rawUrl = getImageUrlFromObject(img)
             const isFeat =
-              img.is_featured || (featuredImageUrl && img.image_url === featuredImageUrl)
+              img.is_featured ||
+              img.id === featuredImageId ||
+              (propFeaturedUrl && (img.image_url === propFeaturedUrl || img.url === propFeaturedUrl))
             const isCov =
-              img.is_cover || (bannerImageUrl && img.image_url === bannerImageUrl)
+              img.is_cover ||
+              img.is_banner ||
+              img.id === coverImageId ||
+              (propBannerUrl && (img.image_url === propBannerUrl || img.url === propBannerUrl))
             const isBan =
-              img.is_banner || (bannerImageUrl && img.image_url === bannerImageUrl)
+              img.is_banner ||
+              (propBannerUrl && (img.image_url === propBannerUrl || img.url === propBannerUrl))
             const imgOrder = img.display_order ?? img.sort_order ?? idx + 1
 
             return (
@@ -576,34 +819,31 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                 key={img.id || idx}
                 className={`group relative rounded-2xl overflow-hidden bg-zinc-900/70 border transition-all duration-200 flex flex-col ${
                   isFeat && isCov
-                    ? 'border-amber-500 ring-2 ring-cyan-500/40 shadow-lg shadow-amber-500/5'
+                    ? 'border-amber-500 ring-2 ring-cyan-500/50 shadow-lg shadow-amber-500/10'
                     : isFeat
-                    ? 'border-amber-500 ring-2 ring-amber-500/30 shadow-lg shadow-amber-500/5'
+                    ? 'border-amber-500 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10'
                     : isCov
-                    ? 'border-cyan-500 ring-2 ring-cyan-500/30 shadow-lg shadow-cyan-500/5'
-                    : isBan
-                    ? 'border-indigo-500 ring-2 ring-indigo-500/30 shadow-lg shadow-indigo-500/5'
-                    : 'border-zinc-800 hover:border-zinc-700 hover:shadow-xl'
+                    ? 'border-cyan-500 ring-2 ring-cyan-500/40 shadow-lg shadow-cyan-500/10'
+                    : 'border-zinc-800/80 hover:border-zinc-700 hover:shadow-xl'
                 }`}
               >
-                {/* Image Media Container */}
+                {/* Image Thumbnail Container */}
                 <div
                   onClick={() => setLightboxIndex(images.findIndex((i) => i.id === img.id))}
                   className="relative aspect-[16/10] w-full bg-black overflow-hidden cursor-pointer flex items-center justify-center"
                 >
-                  <img
-                    src={getProjectImageUrl(img.image_url)}
+                  <ImageThumbnail
+                    url={rawUrl}
                     alt={img.alt_text || 'Project media'}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    loading="lazy"
                   />
 
-                  {/* Dark gradient overlay on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 opacity-60 group-hover:opacity-80 transition-opacity" />
+                  {/* Gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 opacity-50 group-hover:opacity-80 transition-opacity" />
 
-                  {/* Badges Overlay (Top-Left) */}
+                  {/* Badges (Top-Left) */}
                   <div className="absolute top-2 left-2 flex flex-wrap gap-1 z-10 pointer-events-none">
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-black/70 text-zinc-300 backdrop-blur-xs border border-white/10">
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-black/80 text-zinc-300 backdrop-blur-xs border border-white/10">
                       #{imgOrder}
                     </span>
                     {isFeat && (
@@ -618,7 +858,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                         <span>Cover</span>
                       </span>
                     )}
-                    {isBan && (
+                    {isBan && !isCov && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500 text-white flex items-center gap-1 shadow-sm">
                         <Flag className="w-2.5 h-2.5" />
                         <span>Banner</span>
@@ -626,9 +866,8 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                     )}
                   </div>
 
-                  {/* Top-Right Quick Action Icons */}
+                  {/* Top-Right Action Buttons */}
                   <div className="absolute top-2 right-2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {/* View Zoom */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -643,7 +882,6 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
 
                     {!readOnly && (
                       <>
-                        {/* Edit Metadata */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -656,7 +894,6 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                           <Edit3 className="w-3 h-3" />
                         </button>
 
-                        {/* Delete */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -672,26 +909,21 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                     )}
                   </div>
 
-                  {/* Center Enlarge Hint */}
+                  {/* Center Hint */}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    <span className="text-[11px] font-medium text-white px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs border border-white/20 flex items-center gap-1.5">
+                    <span className="text-[11px] font-medium text-white px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-xs border border-white/20 flex items-center gap-1.5">
                       <Maximize2 className="w-3 h-3" />
-                      <span>View Gallery Item</span>
+                      <span>Zoom Image</span>
                     </span>
                   </div>
                 </div>
 
-                {/* Card Info & Details */}
+                {/* Card Body & Selection Buttons */}
                 <div className="p-3 bg-zinc-950/90 border-t border-zinc-800/80 flex-1 flex flex-col justify-between gap-2.5">
-                  <div className="space-y-1">
-                    {img.caption ? (
-                      <p className="text-xs font-semibold text-zinc-200 line-clamp-1" title={img.caption}>
-                        {img.caption}
-                      </p>
-                    ) : (
-                      <p className="text-[11px] text-zinc-500 italic">No caption set</p>
-                    )}
-
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-semibold text-zinc-200 line-clamp-1" title={img.caption || `Image #${imgOrder}`}>
+                      {img.caption || `Image #${imgOrder}`}
+                    </p>
                     {img.alt_text && (
                       <p className="text-[10px] text-zinc-400 font-mono truncate" title={img.alt_text}>
                         Alt: {img.alt_text}
@@ -699,75 +931,56 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                     )}
                   </div>
 
-                  {/* Designation & Reorder Controls */}
+                  {/* CHOOSE FEATURED & COVER BUTTONS */}
                   {!readOnly && (
                     <div className="space-y-2 pt-1 border-t border-zinc-900">
-                      {/* Set Designation Buttons */}
-                      <div className="grid grid-cols-3 gap-1">
-                        {/* Featured */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {/* 1. Choose as Featured */}
                         <button
                           type="button"
                           disabled={actionInProgress?.id === img.id}
                           onClick={() => handleSetFeatured(img)}
-                          className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                          className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
                             isFeat
                               ? 'bg-amber-500 text-black shadow-xs font-bold'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 border border-zinc-800'
+                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800'
                           }`}
-                          title="Designate as Featured Card"
+                          title="Choose as Featured Card Thumbnail"
                         >
                           {actionInProgress?.id === img.id && actionInProgress?.action === 'featured' ? (
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
-                            <Star className={`w-2.5 h-2.5 ${isFeat ? 'fill-black' : ''}`} />
+                            <Star className={`w-3 h-3 ${isFeat ? 'fill-black' : ''}`} />
                           )}
-                          <span>{isFeat ? 'Featured' : 'Feat'}</span>
+                          <span>{isFeat ? 'Featured ★' : 'Set Featured'}</span>
                         </button>
 
-                        {/* Cover */}
+                        {/* 2. Choose as Cover */}
                         <button
                           type="button"
                           disabled={actionInProgress?.id === img.id}
                           onClick={() => handleSetCover(img)}
-                          className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                          className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
                             isCov
                               ? 'bg-cyan-500 text-black shadow-xs font-bold'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-cyan-400 border border-zinc-800'
+                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-cyan-400 border border-zinc-800'
                           }`}
-                          title="Designate as Cover Image"
+                          title="Choose as Cover Banner Image"
                         >
                           {actionInProgress?.id === img.id && actionInProgress?.action === 'cover' ? (
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
-                            <LayoutTemplate className="w-2.5 h-2.5" />
+                            <LayoutTemplate className="w-3 h-3" />
                           )}
-                          <span>{isCov ? 'Cover' : 'Cover'}</span>
-                        </button>
-
-                        {/* Banner */}
-                        <button
-                          type="button"
-                          disabled={actionInProgress?.id === img.id}
-                          onClick={() => handleSetBanner(img)}
-                          className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                            isBan
-                              ? 'bg-indigo-500 text-white shadow-xs font-bold'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-indigo-400 border border-zinc-800'
-                          }`}
-                          title="Designate as Banner Image"
-                        >
-                          {actionInProgress?.id === img.id && actionInProgress?.action === 'banner' ? (
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                          ) : (
-                            <Flag className="w-2.5 h-2.5" />
-                          )}
-                          <span>{isBan ? 'Banner' : 'Banner'}</span>
+                          <span>{isCov ? 'Cover Active' : 'Set Cover'}</span>
                         </button>
                       </div>
 
                       {/* Reorder Buttons */}
-                      <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-1">
-                        <span className="font-mono">Order #{imgOrder}</span>
+                      <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-0.5">
+                        <span className="font-mono text-zinc-500">
+                          {typeof img.id === 'number' ? `ID #${img.id}` : 'Staged'}
+                        </span>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -798,7 +1011,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
         </div>
       )}
 
-      {/* LIGHTBOX / FULLSCREEN ZOOM MODAL */}
+      {/* 5. LIGHTBOX MODAL */}
       {lightboxIndex !== null && activeLightboxImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200">
           {/* Top Bar */}
@@ -818,7 +1031,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
               {/* Copy URL */}
               <button
                 type="button"
-                onClick={() => handleCopyUrl(activeLightboxImage.image_url)}
+                onClick={() => handleCopyUrl(getImageUrlFromObject(activeLightboxImage))}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-white transition-all cursor-pointer"
                 title="Copy direct image link"
               >
@@ -828,7 +1041,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
 
               {/* Open in new tab */}
               <a
-                href={getProjectImageUrl(activeLightboxImage.image_url)}
+                href={getProjectImageUrl(getImageUrlFromObject(activeLightboxImage))}
                 target="_blank"
                 rel="noreferrer"
                 className="p-2 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-all cursor-pointer"
@@ -883,8 +1096,8 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
 
           {/* Main Enlarge View */}
           <div className="max-w-5xl max-h-[75vh] w-full flex items-center justify-center p-2 z-10">
-            <img
-              src={getProjectImageUrl(activeLightboxImage.image_url)}
+            <ImageThumbnail
+              url={getImageUrlFromObject(activeLightboxImage)}
               alt={activeLightboxImage.alt_text || 'Project media'}
               className="max-w-full max-h-[72vh] object-contain rounded-xl shadow-2xl border border-zinc-800/80"
             />
@@ -965,7 +1178,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
         </div>
       )}
 
-      {/* EDIT METADATA MODAL */}
+      {/* 6. EDIT METADATA MODAL */}
       {editingImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden p-5 space-y-4">
@@ -985,11 +1198,13 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
 
             {/* Thumbnail Preview */}
             <div className="flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800">
-              <img
-                src={getProjectImageUrl(editingImage.image_url)}
-                alt="preview"
-                className="w-14 h-14 rounded-lg object-cover"
-              />
+              <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-black">
+                <ImageThumbnail
+                  url={getImageUrlFromObject(editingImage)}
+                  alt="preview"
+                  className="w-full h-full object-cover"
+                />
+              </div>
               <div className="min-w-0">
                 <span className="text-[11px] font-mono text-zinc-400 block truncate">
                   ID #{editingImage.id}
@@ -1062,7 +1277,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* 7. DELETE CONFIRMATION MODAL */}
       {deletingImageId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden p-5 space-y-4">
