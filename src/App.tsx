@@ -6,6 +6,7 @@ import MainDashboard from './pages/dashboard/MainDashboard'
 import ProjectsList from './pages/projects/ProjectsList'
 import ProjectForm from './pages/projects/ProjectForm'
 import ProjectCategories from './pages/projects/ProjectCategories'
+import ProjectTechnology from './pages/projects/ProjectTechnology'
 import ChangePassword from './pages/auth/ChangePassword'
 import ProfileView from './pages/auth/ProfileView'
 import authService from './utils/auth.service'
@@ -38,6 +39,9 @@ export default function App() {
         return 'Edit Project'
       case 'projects-categories':
         return 'Project Categories'
+      case 'projects-technologies':
+      case 'technologies':
+        return 'Technologies & Skills'
       default:
         return id.replace('-', ' ')
     }
@@ -78,6 +82,19 @@ export default function App() {
       case 'projects-categories':
         return (
           <ProjectCategories
+            onAddProject={() => {
+              setEditingProjectId(null)
+              setActiveMenuId('projects-add')
+            }}
+          />
+        )
+
+      case 'projects-technologies':
+      case 'technologies':
+      case 'skills':
+      case 'skills-all':
+        return (
+          <ProjectTechnology
             onAddProject={() => {
               setEditingProjectId(null)
               setActiveMenuId('projects-add')

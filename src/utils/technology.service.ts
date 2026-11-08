@@ -1,5 +1,11 @@
 import axiosService from './axios.service'
 
+export interface TechnologyPayload {
+  name: string
+  slug?: string
+  [key: string]: unknown
+}
+
 export interface Technology {
   id: number
   name: string
@@ -19,7 +25,7 @@ export interface TechnologyApiResponse<T = unknown> {
 
 export const technologyService = {
   /**
-   * GET /technologies - Fetch all technologies
+   * GET /technologies - Public: List all technologies (no auth needed)
    */
   async getAll(): Promise<Technology[]> {
     const res = await axiosService.get<TechnologyApiResponse<Technology[]>>('/technologies')
@@ -27,7 +33,7 @@ export const technologyService = {
   },
 
   /**
-   * GET /technologies/:id - Fetch single technology
+   * GET /technologies/:id - Public: Fetch a single technology (no auth needed)
    */
   async getById(id: number | string): Promise<Technology> {
     const res = await axiosService.get<TechnologyApiResponse<Technology>>(`/technologies/${id}`)
@@ -35,23 +41,24 @@ export const technologyService = {
   },
 
   /**
-   * POST /technologies - Create new technology
+   * POST /technologies - Authenticated: Create a new technology (Requires JWT token)
+   * Payload: { name: "React", slug?: "react" }
    */
-  async create(payload: { name: string; slug?: string }): Promise<Technology> {
+  async create(payload: TechnologyPayload): Promise<Technology> {
     const res = await axiosService.post<TechnologyApiResponse<Technology>>('/technologies', payload)
     return res.data?.data
   },
 
   /**
-   * PUT /technologies/:id - Edit technology
+   * PUT /technologies/:id - Authenticated: Edit a technology (Requires JWT token)
    */
-  async update(id: number | string, payload: { name: string; slug?: string }): Promise<Technology> {
+  async update(id: number | string, payload: TechnologyPayload): Promise<Technology> {
     const res = await axiosService.put<TechnologyApiResponse<Technology>>(`/technologies/${id}`, payload)
     return res.data?.data
   },
 
   /**
-   * DELETE /technologies/:id - Delete technology
+   * DELETE /technologies/:id - Authenticated: Delete a technology (Requires JWT token)
    */
   async delete(id: number | string): Promise<{ success: boolean; message: string }> {
     const res = await axiosService.delete<TechnologyApiResponse<null>>(`/technologies/${id}`)

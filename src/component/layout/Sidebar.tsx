@@ -137,6 +137,7 @@ export default function Sidebar({
             { id: 'projects-all', label: 'All Projects' },
             { id: 'projects-add', label: 'Add Project' },
             { id: 'projects-categories', label: 'Categories' },
+            { id: 'projects-technologies', label: 'Technologies' },
           ],
         },
         {
