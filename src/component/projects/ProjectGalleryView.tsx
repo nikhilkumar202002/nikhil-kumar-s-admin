@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   Upload,
   Star,
-  LayoutTemplate,
+  PanelTop,
   Trash2,
   Edit3,
   Maximize2,
@@ -634,7 +634,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                 <span className="text-[11px] text-zinc-500 block truncate">
                   {activeFeatured
                     ? 'Card & listing thumbnail active'
-                    : 'Click "Set Featured" on any image below'}
+                    : 'Click the star icon (★) on any image below'}
                 </span>
               </div>
             </div>
@@ -670,7 +670,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <LayoutTemplate className="w-5 h-5 text-zinc-600" />
+                  <PanelTop className="w-5 h-5 text-zinc-600" />
                 )}
               </div>
               <div className="min-w-0">
@@ -685,7 +685,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                 <span className="text-[11px] text-zinc-500 block truncate">
                   {activeCover
                     ? 'Hero header banner active'
-                    : 'Click "Set Cover" on any image below'}
+                    : 'Click the panel icon on any image below'}
                 </span>
               </div>
             </div>
@@ -706,12 +706,25 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
 
       {/* 3. GALLERY TOOLBAR & FILTER BAR */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-zinc-950 border border-zinc-800/90">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <ImageIcon className="w-4 h-4 text-zinc-400" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-200">
               All Uploaded Images ({images.length})
             </h3>
+          </div>
+
+          {/* Subtle Icon Legend */}
+          <div className="hidden md:flex items-center gap-2 pl-3 border-l border-zinc-800 text-[11px] text-zinc-400">
+            <span className="flex items-center gap-1 text-amber-400 font-medium" title="Star icon relates to Featured Card Image">
+              <Star className="w-3 h-3 fill-amber-400" />
+              <span>Featured</span>
+            </span>
+            <span className="text-zinc-600">•</span>
+            <span className="flex items-center gap-1 text-cyan-400 font-medium" title="Panel icon relates to Cover Banner Image">
+              <PanelTop className="w-3 h-3" />
+              <span>Cover</span>
+            </span>
           </div>
         </div>
 
@@ -731,25 +744,25 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
           <button
             type="button"
             onClick={() => setFilter('featured')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
               filter === 'featured'
                 ? 'bg-amber-500 text-black shadow-xs'
                 : 'bg-zinc-900 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800'
             }`}
           >
-            <Star className="w-3 h-3" />
+            <Star className="w-3 h-3 fill-current" />
             <span>Featured ({stats.featured})</span>
           </button>
           <button
             type="button"
             onClick={() => setFilter('cover')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
               filter === 'cover'
                 ? 'bg-cyan-500 text-black shadow-xs'
                 : 'bg-zinc-900 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800'
             }`}
           >
-            <LayoutTemplate className="w-3 h-3" />
+            <PanelTop className="w-3 h-3" />
             <span>Cover ({stats.cover})</span>
           </button>
 
@@ -841,27 +854,33 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                   {/* Gradient overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 opacity-50 group-hover:opacity-80 transition-opacity" />
 
-                  {/* Badges (Top-Left) */}
-                  <div className="absolute top-2 left-2 flex flex-wrap gap-1 z-10 pointer-events-none">
+                  {/* Badges (Top-Left): Icon Only */}
+                  <div className="absolute top-2 left-2 flex items-center gap-1 z-10 pointer-events-none">
                     <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-black/80 text-zinc-300 backdrop-blur-xs border border-white/10">
                       #{imgOrder}
                     </span>
                     {isFeat && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500 text-black flex items-center gap-1 shadow-sm">
-                        <Star className="w-2.5 h-2.5 fill-black" />
-                        <span>Featured</span>
+                      <span
+                        className="p-1 rounded-md bg-amber-500 text-black flex items-center justify-center shadow-md ring-1 ring-amber-400/40"
+                        title="Featured Card Image (Active)"
+                      >
+                        <Star className="w-3 h-3 fill-black stroke-black" />
                       </span>
                     )}
                     {isCov && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-500 text-black flex items-center gap-1 shadow-sm">
-                        <LayoutTemplate className="w-2.5 h-2.5" />
-                        <span>Cover</span>
+                      <span
+                        className="p-1 rounded-md bg-cyan-500 text-black flex items-center justify-center shadow-md ring-1 ring-cyan-400/40"
+                        title="Cover Banner Image (Active)"
+                      >
+                        <PanelTop className="w-3 h-3 stroke-[2.5]" />
                       </span>
                     )}
                     {isBan && !isCov && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500 text-white flex items-center gap-1 shadow-sm">
-                        <Flag className="w-2.5 h-2.5" />
-                        <span>Banner</span>
+                      <span
+                        className="p-1 rounded-md bg-indigo-500 text-white flex items-center justify-center shadow-md"
+                        title="Banner Image (Active)"
+                      >
+                        <Flag className="w-3 h-3" />
                       </span>
                     )}
                   </div>
@@ -931,79 +950,89 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                     )}
                   </div>
 
-                  {/* CHOOSE FEATURED & COVER BUTTONS */}
-                  {!readOnly && (
-                    <div className="space-y-2 pt-1 border-t border-zinc-900">
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {/* 1. Choose as Featured */}
+                  {/* ICON-ONLY ACTIONS: FEATURED & COVER + REORDER */}
+                  <div className="flex items-center justify-between pt-2 border-t border-zinc-900/80">
+                    {/* Left: Reorder controls */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveOrder(idx, 'up')}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        title="Move order earlier"
+                        aria-label="Move order earlier"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === filteredImages.length - 1}
+                        onClick={() => handleMoveOrder(idx, 'down')}
+                        className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        title="Move order later"
+                        aria-label="Move order later"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Right: Icon-only buttons for Featured & Cover */}
+                    {!readOnly && (
+                      <div className="flex items-center gap-1.5">
+                        {/* 1. Featured Icon Button */}
                         <button
                           type="button"
                           disabled={actionInProgress?.id === img.id}
                           onClick={() => handleSetFeatured(img)}
-                          className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
+                          className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
                             isFeat
-                              ? 'bg-amber-500 text-black shadow-xs font-bold'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800'
+                              ? 'bg-amber-500 text-black border-amber-400 shadow-md ring-2 ring-amber-400/40 font-bold'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 hover:bg-zinc-800/80'
                           }`}
-                          title="Choose as Featured Card Thumbnail"
+                          title={
+                            isFeat
+                              ? 'Featured Card Image (Active) — click to re-select'
+                              : 'Set as Featured Card Image'
+                          }
+                          aria-label={
+                            isFeat ? 'Featured Card Image (Active)' : 'Set as Featured Card Image'
+                          }
                         >
                           {actionInProgress?.id === img.id && actionInProgress?.action === 'featured' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
-                            <Star className={`w-3 h-3 ${isFeat ? 'fill-black' : ''}`} />
+                            <Star className={`w-3.5 h-3.5 ${isFeat ? 'fill-black stroke-black' : ''}`} />
                           )}
-                          <span>{isFeat ? 'Featured ★' : 'Set Featured'}</span>
                         </button>
 
-                        {/* 2. Choose as Cover */}
+                        {/* 2. Cover Icon Button */}
                         <button
                           type="button"
                           disabled={actionInProgress?.id === img.id}
                           onClick={() => handleSetCover(img)}
-                          className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
+                          className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
                             isCov
-                              ? 'bg-cyan-500 text-black shadow-xs font-bold'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-cyan-400 border border-zinc-800'
+                              ? 'bg-cyan-500 text-black border-cyan-400 shadow-md ring-2 ring-cyan-400/40 font-bold'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-zinc-800/80'
                           }`}
-                          title="Choose as Cover Banner Image"
+                          title={
+                            isCov
+                              ? 'Cover Banner Image (Active) — click to re-select'
+                              : 'Set as Cover Banner Image'
+                          }
+                          aria-label={
+                            isCov ? 'Cover Banner Image (Active)' : 'Set as Cover Banner Image'
+                          }
                         >
                           {actionInProgress?.id === img.id && actionInProgress?.action === 'cover' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
-                            <LayoutTemplate className="w-3 h-3" />
+                            <PanelTop className={`w-3.5 h-3.5 ${isCov ? 'stroke-black stroke-[2.5]' : ''}`} />
                           )}
-                          <span>{isCov ? 'Cover Active' : 'Set Cover'}</span>
                         </button>
                       </div>
-
-                      {/* Reorder Buttons */}
-                      <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-0.5">
-                        <span className="font-mono text-zinc-500">
-                          {typeof img.id === 'number' ? `ID #${img.id}` : 'Staged'}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            disabled={idx === 0}
-                            onClick={() => handleMoveOrder(idx, 'up')}
-                            className="p-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                            title="Move earlier"
-                          >
-                            <ArrowUp className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={idx === filteredImages.length - 1}
-                            onClick={() => handleMoveOrder(idx, 'down')}
-                            className="p-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                            title="Move later"
-                          >
-                            <ArrowDown className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -1111,18 +1140,27 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
                   {activeLightboxImage.caption || 'Project Image'}
                 </h4>
                 {activeLightboxImage.is_featured && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-black">
-                    Featured
+                  <span
+                    className="p-1 rounded-md bg-amber-500 text-black flex items-center justify-center shadow-xs"
+                    title="Featured Card Image (Active)"
+                  >
+                    <Star className="w-3 h-3 fill-black stroke-black" />
                   </span>
                 )}
                 {activeLightboxImage.is_cover && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500 text-black">
-                    Cover
+                  <span
+                    className="p-1 rounded-md bg-cyan-500 text-black flex items-center justify-center shadow-xs"
+                    title="Cover Banner Image (Active)"
+                  >
+                    <PanelTop className="w-3 h-3 stroke-[2.5]" />
                   </span>
                 )}
-                {activeLightboxImage.is_banner && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500 text-white">
-                    Banner
+                {activeLightboxImage.is_banner && !activeLightboxImage.is_cover && (
+                  <span
+                    className="p-1 rounded-md bg-indigo-500 text-white flex items-center justify-center shadow-xs"
+                    title="Banner Image (Active)"
+                  >
+                    <Flag className="w-3 h-3" />
                   </span>
                 )}
               </div>
@@ -1133,44 +1171,59 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
               )}
             </div>
 
-            {/* Lightbox Quick Actions */}
+            {/* Lightbox Quick Actions: Icon Only with Tooltips */}
             {!readOnly && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => handleSetFeatured(activeLightboxImage)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center border active:scale-95 ${
                     activeLightboxImage.is_featured
-                      ? 'bg-amber-500 text-black'
-                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300'
+                      ? 'bg-amber-500 text-black border-amber-400 shadow-md ring-2 ring-amber-400/40'
+                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:text-amber-400'
                   }`}
+                  title={
+                    activeLightboxImage.is_featured
+                      ? 'Featured Card Image (Active) — click to re-select'
+                      : 'Set as Featured Card Image'
+                  }
+                  aria-label="Set as Featured Card Image"
                 >
-                  <Star className="w-3 h-3" />
-                  <span>Featured</span>
+                  <Star className={`w-4 h-4 ${activeLightboxImage.is_featured ? 'fill-black stroke-black' : ''}`} />
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetCover(activeLightboxImage)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center border active:scale-95 ${
                     activeLightboxImage.is_cover
-                      ? 'bg-cyan-500 text-black'
-                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300'
+                      ? 'bg-cyan-500 text-black border-cyan-400 shadow-md ring-2 ring-cyan-400/40'
+                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:text-cyan-400'
                   }`}
+                  title={
+                    activeLightboxImage.is_cover
+                      ? 'Cover Banner Image (Active) — click to re-select'
+                      : 'Set as Cover Banner Image'
+                  }
+                  aria-label="Set as Cover Banner Image"
                 >
-                  <LayoutTemplate className="w-3 h-3" />
-                  <span>Cover</span>
+                  <PanelTop className={`w-4 h-4 ${activeLightboxImage.is_cover ? 'stroke-black stroke-[2.5]' : ''}`} />
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSetBanner(activeLightboxImage)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  className={`p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center border active:scale-95 ${
                     activeLightboxImage.is_banner
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300'
+                      ? 'bg-indigo-500 text-white border-indigo-400 shadow-md ring-2 ring-indigo-400/40'
+                      : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:text-indigo-400'
                   }`}
+                  title={
+                    activeLightboxImage.is_banner
+                      ? 'Banner Image (Active) — click to re-select'
+                      : 'Set as Banner Image'
+                  }
+                  aria-label="Set as Banner Image"
                 >
-                  <Flag className="w-3 h-3" />
-                  <span>Banner</span>
+                  <Flag className="w-4 h-4" />
                 </button>
               </div>
             )}
