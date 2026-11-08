@@ -28,20 +28,20 @@ export interface CategoryApiResponse<T = unknown> {
 
 export const categoryService = {
   /**
-   * GET /project-categories - Public method to list all categories
-   * Tries /project-categories first; seamlessly falls back to /categories if 404
+   * GET /categories - Public method to list all categories
+   * Tries /categories first; seamlessly falls back to /project-categories if needed
    */
   async getAll(): Promise<Category[]> {
     try {
       const res = await axiosService.get<CategoryApiResponse<Category[]>>(
-        '/project-categories'
+        '/categories'
       )
       return res.data?.data || []
     } catch (err: unknown) {
       const errorObj = err as { status?: number }
       if (errorObj?.status === 404) {
         const res = await axiosService.get<CategoryApiResponse<Category[]>>(
-          '/categories'
+          '/project-categories'
         )
         return res.data?.data || []
       }
@@ -50,20 +50,20 @@ export const categoryService = {
   },
 
   /**
-   * GET /project-categories/:id - Public method to retrieve a single category
-   * Tries /project-categories/:id first; falls back to /categories/:id if 404
+   * GET /categories/:id - Public method to retrieve a single category
+   * Tries /categories/:id first; falls back to /project-categories/:id if needed
    */
   async getById(id: number | string): Promise<Category> {
     try {
       const res = await axiosService.get<CategoryApiResponse<Category>>(
-        `/project-categories/${id}`
+        `/categories/${id}`
       )
       return res.data?.data
     } catch (err: unknown) {
       const errorObj = err as { status?: number }
       if (errorObj?.status === 404) {
         const res = await axiosService.get<CategoryApiResponse<Category>>(
-          `/categories/${id}`
+          `/project-categories/${id}`
         )
         return res.data?.data
       }

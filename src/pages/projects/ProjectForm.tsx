@@ -54,10 +54,12 @@ export default function ProjectForm({
   // Category state (linked to Category model: id & name)
   const [categoryId, setCategoryId] = useState<number | string>('')
   const [availableCategories, setAvailableCategories] = useState<Category[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
   
   // Technology state (linked to Technology model: id & name)
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([])
   const [availableTechnologies, setAvailableTechnologies] = useState<Technology[]>([])
+  const [isLoadingTechs, setIsLoadingTechs] = useState(true)
   const [newTechName, setNewTechName] = useState('')
   const [isCreatingTech, setIsCreatingTech] = useState(false)
 
@@ -105,17 +107,21 @@ export default function ProjectForm({
     }
   }
 
-  // Fetch Categories & Technologies on mount
+  // Fetch Categories & Technologies from API on mount
   useEffect(() => {
+    setIsLoadingCategories(true)
     categoryService
       .getAll()
       .then((cats) => setAvailableCategories(cats))
-      .catch(() => {})
+      .catch((err) => console.error('Failed to load categories:', err))
+      .finally(() => setIsLoadingCategories(false))
 
+    setIsLoadingTechs(true)
     technologyService
       .getAll()
       .then((techs) => setAvailableTechnologies(techs))
-      .catch(() => {})
+      .catch((err) => console.error('Failed to load technologies:', err))
+      .finally(() => setIsLoadingTechs(false))
   }, [])
 
   // Fetch initial project data for Edit Mode
@@ -540,19 +546,28 @@ export default function ProjectForm({
 
             {/* Category Dropdown (category_id) */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Category</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Category <span className="text-red-400">*</span></span>
+                </label>
+                {isLoadingCategories && (
+                  <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-400" />
+                    Loading API...
+                  </span>
+                )}
+              </div>
               <select
+                required
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full px-3.5 py-2.5 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 transition-all cursor-pointer font-medium"
+                className="w-full px-3.5 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all cursor-pointer font-medium"
               >
-                <option value="">Select a Category...</option>
+                <option value="">Select Category from API...</option>
                 {availableCategories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
-                    {cat.name}
+                    {cat.name} (ID: #{cat.id})
                   </option>
                 ))}
               </select>
@@ -654,75 +669,169 @@ export default function ProjectForm({
           </div>
         </div>
 
-        {/* Section B: Technologies Selection (technology_ids) */}
+        {/* Section B: Technologies Selection from API Dropdown */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
             <div className="flex items-center gap-2">
               <Cpu className="w-4 h-4 text-emerald-400" />
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
-                Technologies & Tools
+                Technologies & Tools (from API)
               </h2>
             </div>
-            <span className="text-[11px] text-zinc-400">
-              {selectedTechIds.length} technology(ies) selected
-            </span>
+            <div className="flex items-center gap-2">
+              {isLoadingTechs && (
+                <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-emerald-400" />
+                  Loading API...
+                </span>
+              )}
+              <span className="text-[11px] text-zinc-400 font-mono">
+                {selectedTechIds.length} selected
+              </span>
+            </div>
           </div>
 
           <p className="text-xs text-zinc-400">
-            Click to select/unselect the technologies used in this project:
+            Select technologies from the API dropdown to associate them with this project:
           </p>
 
-          {/* Technology Chips Selection */}
-          <div className="flex flex-wrap items-center gap-2 min-h-10">
-            {availableTechnologies.map((tech) => {
-              const isSelected = selectedTechIds.includes(tech.id)
-              return (
+          {/* 1. Technology Select Dropdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                Select from API Dropdown
+              </label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = Number(e.target.value)
+                  if (val && !selectedTechIds.includes(val)) {
+                    setSelectedTechIds((prev) => [...prev, val])
+                  }
+                }}
+                className="w-full px-3.5 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all cursor-pointer font-medium"
+              >
+                <option value="">-- Choose Technology from API Dropdown --</option>
+                {availableTechnologies
+                  .filter((tech) => !selectedTechIds.includes(tech.id))
+                  .map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.name} (ID: #{tech.id})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Quick create custom technology */}
+            <div>
+              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                Or Create New Tech
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={newTechName}
+                  onChange={(e) => setNewTechName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleCreateNewTech()
+                    }
+                  }}
+                  placeholder="New technology name..."
+                  className="flex-1 px-3 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
+                />
                 <button
-                  key={tech.id}
                   type="button"
-                  onClick={() => handleToggleTech(tech.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer border ${
-                    isSelected
-                      ? 'bg-white text-zinc-950 border-white font-semibold shadow-xs'
-                      : 'bg-zinc-900/80 text-zinc-400 hover:text-white border-zinc-800 hover:border-zinc-700'
-                  }`}
+                  disabled={isCreatingTech || !newTechName.trim()}
+                  onClick={handleCreateNewTech}
+                  className="flex items-center gap-1 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-40"
                 >
-                  <span>{tech.name}</span>
-                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-zinc-950" />}
+                  {isCreatingTech ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
+                  <span>Add</span>
                 </button>
-              )
-            })}
+              </div>
+            </div>
           </div>
 
-          {/* Quick Create New Technology */}
-          <div className="pt-2 flex items-center gap-2">
-            <input
-              type="text"
-              value={newTechName}
-              onChange={(e) => setNewTechName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleCreateNewTech()
-                }
-              }}
-              placeholder="Add another technology (e.g. GraphQL, Tailwind CSS)..."
-              className="flex-1 px-3.5 py-2 bg-zinc-900/70 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition-all"
-            />
-            <button
-              type="button"
-              disabled={isCreatingTech || !newTechName.trim()}
-              onClick={handleCreateNewTech}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-40"
-            >
-              {isCreatingTech ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Plus className="w-3.5 h-3.5" />
+          {/* 2. Selected Technologies Badges */}
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-zinc-300">
+                Selected Technologies:
+              </span>
+              {selectedTechIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTechIds([])}
+                  className="text-[11px] text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                >
+                  Clear all ({selectedTechIds.length})
+                </button>
               )}
-              <span>Add Tech</span>
-            </button>
+            </div>
+
+            {selectedTechIds.length === 0 ? (
+              <div className="p-3 rounded-xl border border-dashed border-zinc-800/80 bg-zinc-900/20 text-center text-xs text-zinc-500">
+                No technologies selected. Choose from the dropdown above to add.
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 min-h-9">
+                {selectedTechIds.map((id) => {
+                  const tech = availableTechnologies.find((t) => t.id === id)
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white text-zinc-950 border border-white text-xs font-semibold shadow-xs animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      <span>{tech?.name || `Tech #${id}`}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTech(id)}
+                        className="p-0.5 rounded-full hover:bg-zinc-200 text-zinc-700 hover:text-black transition-colors cursor-pointer"
+                        title="Remove technology"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
           </div>
+
+          {/* 3. Quick-Click Options (All available from API) */}
+          {availableTechnologies.length > 0 && (
+            <div className="pt-3 border-t border-zinc-900 space-y-1.5">
+              <span className="text-[11px] text-zinc-500 block">
+                Quick click to toggle from available API technologies:
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {availableTechnologies.map((tech) => {
+                  const isSelected = selectedTechIds.includes(tech.id)
+                  return (
+                    <button
+                      key={tech.id}
+                      type="button"
+                      onClick={() => handleToggleTech(tech.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : 'bg-zinc-900/70 text-zinc-400 hover:text-white border-zinc-800/80 hover:border-zinc-700'
+                      }`}
+                    >
+                      <span>{tech.name}</span>
+                      {isSelected ? ' ✓' : ' +'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section C: Descriptions & Overview */}
