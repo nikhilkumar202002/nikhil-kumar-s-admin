@@ -4,6 +4,7 @@ import projectService, {
   type PaginationMeta,
   type ProjectQueryParams,
 } from '../../utils/project.service'
+import { BASE_SERVER_URL } from '../../utils/axios.service'
 import {
   Briefcase,
   Plus,
@@ -417,7 +418,7 @@ export default function ProjectsList({
                               src={
                                 (project.featured_image || project.cover_image)!.startsWith('http')
                                   ? (project.featured_image || project.cover_image)!
-                                  : `http://localhost:3000${project.featured_image || project.cover_image}`
+                                  : `${BASE_SERVER_URL}${project.featured_image || project.cover_image}`
                               }
                               alt={project.title}
                               className="w-full h-full object-cover"

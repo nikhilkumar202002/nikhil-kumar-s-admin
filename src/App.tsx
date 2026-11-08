@@ -147,19 +147,9 @@ export default function App() {
     )
   }
 
-  // Login Page with quick preview toggle to view the dashboard directly
+  // Login Page
   return (
     <div className="w-full min-h-screen relative bg-zinc-950">
-      <div className="absolute top-4 left-4 z-50">
-        <button
-          type="button"
-          onClick={() => setIsAuthenticated(true)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 transition-all shadow-md cursor-pointer flex items-center gap-1.5"
-        >
-          <span>Preview Dashboard</span>
-          <span>→</span>
-        </button>
-      </div>
       <Login />
     </div>
   )

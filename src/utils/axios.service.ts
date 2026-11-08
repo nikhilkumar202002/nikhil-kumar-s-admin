@@ -5,11 +5,14 @@ import axios, {
   type AxiosError,
 } from 'axios'
 
-// Node.js Backend API Base URL (Default to http://localhost:5000/api/v1 as requested)
+// Node.js Backend API Base URL
 export const BASE_API_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  'http://localhost:3000/api/v1'
+  'https://api.nikhilkumars.com/api/v1'
+
+// Root server URL (without /api/v1 or /api) for media and static assets
+export const BASE_SERVER_URL = BASE_API_URL.replace(/\/api(\/v\d+)?\/?$/, '')
 
 const TOKEN_KEY = 'portfolio_admin_token'
 

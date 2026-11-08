@@ -5,6 +5,7 @@ import projectService, {
   type CreateProjectPayload,
   type UpdateProjectPayload,
 } from '../../utils/project.service'
+import { BASE_SERVER_URL } from '../../utils/axios.service'
 import {
   ArrowLeft,
   Save,
@@ -893,7 +894,7 @@ export default function ProjectForm({
                     src={
                       featuredImageUrl.startsWith("http")
                         ? featuredImageUrl
-                        : `http://localhost:3000${featuredImageUrl}`
+                        : `${BASE_SERVER_URL}${featuredImageUrl}`
                     }
                     alt="Featured preview"
                     className="w-full h-full object-cover"
@@ -941,7 +942,7 @@ export default function ProjectForm({
                     src={
                       bannerImageUrl.startsWith("http")
                         ? bannerImageUrl
-                        : `http://localhost:3000${bannerImageUrl}`
+                        : `${BASE_SERVER_URL}${bannerImageUrl}`
                     }
                     alt="Cover preview"
                     className="w-full h-full object-cover"
@@ -1017,7 +1018,7 @@ export default function ProjectForm({
                           src={
                             img.image_url.startsWith("http")
                               ? img.image_url
-                              : `http://localhost:3000${img.image_url}`
+                              : `${BASE_SERVER_URL}${img.image_url}`
                           }
                           alt={img.alt_text || "Project media"}
                           className="w-full h-full object-cover"

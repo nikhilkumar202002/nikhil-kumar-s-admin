@@ -5,8 +5,6 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Sun,
-  Moon,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -15,7 +13,6 @@ import {
 import authService from '../../utils/auth.service'
 
 export default function Login() {
-  const [isDark, setIsDark] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -66,22 +63,10 @@ export default function Login() {
   }
 
   return (
-    <div className={isDark ? 'dark' : ''}>
-      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-300 font-sans relative">
-        
-        {/* Subtle Theme Toggle in Top-Right Corner */}
-        <button
-          type="button"
-          onClick={() => setIsDark(!isDark)}
-          className="absolute top-6 right-6 p-2 rounded-xl text-zinc-400 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-white hover:bg-zinc-200/60 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label="Toggle theme"
-        >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-
+    <div className="dark">
+      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-zinc-950 text-zinc-100 font-sans relative">
         {/* Center-Aligned Form Container */}
-        <div className="w-full max-w-md p-8 sm:p-10 rounded-2xl bg-white dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs dark:shadow-2xl transition-all">
+        <div className="w-full max-w-md p-8 sm:p-10 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 shadow-2xl transition-all">
           <div className="mb-8 text-center sm:text-left">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
               Sign in

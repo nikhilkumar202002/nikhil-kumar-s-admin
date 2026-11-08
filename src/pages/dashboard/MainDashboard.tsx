@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import authService, { type User } from '../../utils/auth.service'
+import { BASE_SERVER_URL } from '../../utils/axios.service'
 import projectService, {
   type Project,
   type ProjectStats,
@@ -575,7 +576,7 @@ export default function MainDashboard({
                               src={
                                 (project.featured_image || project.cover_image)!.startsWith('http')
                                   ? (project.featured_image || project.cover_image)!
-                                  : `http://localhost:3000${project.featured_image || project.cover_image}`
+                                  : `${BASE_SERVER_URL}${project.featured_image || project.cover_image}`
                               }
                               alt={project.title}
                               className="w-8 h-8 rounded-lg object-cover bg-zinc-900 border border-zinc-800 flex-shrink-0"
