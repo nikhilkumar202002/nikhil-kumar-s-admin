@@ -78,18 +78,17 @@ export default function ProjectForm({
 
   // 1. Featured Image (Card / Thumbnail)
   const [featuredImageUrl, setFeaturedImageUrl] = useState('')
-  const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null)
+  const [featuredImageId, setFeaturedImageId] = useState<number | string | null>(null)
 
-  // 2. Banner Image (Hero Header)
+  // 2. Cover / Banner Image (Hero Header)
   const [bannerImageUrl, setBannerImageUrl] = useState('')
-  const [bannerImageFile, setBannerImageFile] = useState<File | null>(null)
+  const [coverImageId, setCoverImageId] = useState<number | string | null>(null)
 
   // Project Gallery & Uploads
   const [galleryImages, setGalleryImages] = useState<ProjectImage[]>([])
+  const [stagedGalleryFiles, setStagedGalleryFiles] = useState<File[]>([])
   const [isUploadingGallery, setIsUploadingGallery] = useState(false)
   const galleryInputRef = useRef<HTMLInputElement>(null)
-  const featuredInputRef = useRef<HTMLInputElement>(null)
-  const bannerInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-generate slug from title
   const handleTitleChange = (val: string) => {
@@ -177,10 +176,26 @@ export default function ProjectForm({
         projectService
           .getGalleryImages(projectId)
           .then((imgs) => {
-            if (imgs && imgs.length > 0) {
-              setGalleryImages(imgs)
-            } else {
-              setGalleryImages(proj.images || proj.gallery_images || [])
+            const list = imgs && imgs.length > 0 ? imgs : proj.images || proj.gallery_images || []
+            setGalleryImages(list)
+
+            // Match active featured and cover image IDs
+            const featImg = list.find((i) => i.is_featured || i.image_url === proj.featured_image)
+            if (featImg) {
+              setFeaturedImageId(featImg.id)
+              setFeaturedImageUrl(featImg.image_url)
+            }
+
+            const covImg = list.find(
+              (i) =>
+                i.is_cover ||
+                i.is_banner ||
+                i.image_url === proj.banner_image ||
+                i.image_url === proj.cover_image
+            )
+            if (covImg) {
+              setCoverImageId(covImg.id)
+              setBannerImageUrl(covImg.image_url)
             }
           })
           .catch(() => {
@@ -224,7 +239,7 @@ export default function ProjectForm({
     }
   }
 
-  // Upload Media Files using POST /projects/:id/images (or POST /projects/upload)
+  // Upload Gallery Media Files (all project images are uploaded to the gallery)
   const handleImagesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -241,95 +256,157 @@ export default function ProjectForm({
         for (const file of filesArray) {
           const uploaded = await projectService.createImage(projectId, {
             image: file,
-            is_cover: !featuredImageUrl,
-            is_featured: !featuredImageUrl,
-            is_banner: !bannerImageUrl,
+            is_cover: galleryImages.length === 0 && !featuredImageUrl,
+            is_featured: galleryImages.length === 0 && !featuredImageUrl,
+            is_banner: false,
           })
-          uploadedImages.push(uploaded)
+          if (uploaded) uploadedImages.push(uploaded)
+        }
+
+        const updatedList = [...galleryImages, ...uploadedImages]
+        setGalleryImages(updatedList)
+
+        // If featured or cover was not set yet, auto-select via select-images API
+        if (!featuredImageUrl && uploadedImages.length > 0) {
+          const first = uploadedImages[0]
+          setFeaturedImageUrl(first.image_url)
+          setFeaturedImageId(first.id)
+          if (typeof first.id === 'number') {
+            await Promise.allSettled([
+              projectService.selectImages(projectId, { featured_image_id: first.id }),
+              projectService.setFeaturedImage(projectId, first.id),
+            ])
+          }
+        }
+        if (!bannerImageUrl && uploadedImages.length > 1) {
+          const second = uploadedImages[1]
+          setBannerImageUrl(second.image_url)
+          setCoverImageId(second.id)
+          if (typeof second.id === 'number') {
+            await Promise.allSettled([
+              projectService.selectImages(projectId, {
+                cover_image_id: second.id,
+                banner_image_id: second.id,
+              }),
+              projectService.setCoverImage(projectId, second.id),
+            ])
+          }
         }
       } else {
-        // Standalone upload via POST /projects/upload
-        const res = await projectService.uploadMedia(filesArray)
-        uploadedImages.push(...res)
-      }
+        // Create Mode (staged local gallery images with File references)
+        setStagedGalleryFiles((prev) => [...prev, ...filesArray])
+        filesArray.forEach((file, idx) => {
+          const tempId = `staged-${Date.now()}-${idx}`
+          const localUrl = URL.createObjectURL(file)
+          uploadedImages.push({
+            id: tempId,
+            image_url: localUrl,
+            is_cover: galleryImages.length === 0 && idx === 0,
+            is_featured: galleryImages.length === 0 && idx === 0,
+            is_banner: false,
+            is_gallery: true,
+            display_order: galleryImages.length + idx + 1,
+            sort_order: galleryImages.length + idx + 1,
+            created_at: new Date().toISOString(),
+          })
+        })
 
-      setGalleryImages((prev) => [...prev, ...uploadedImages])
+        setGalleryImages((prev) => [...prev, ...uploadedImages])
 
-      // Auto-assign featured and banner if not yet set
-      if (!featuredImageUrl && uploadedImages.length > 0) {
-        setFeaturedImageUrl(uploadedImages[0].image_url)
-      }
-      if (!bannerImageUrl && uploadedImages.length > 1) {
-        setBannerImageUrl(uploadedImages[1].image_url)
+        if (!featuredImageUrl && uploadedImages.length > 0) {
+          setFeaturedImageUrl(uploadedImages[0].image_url)
+          setFeaturedImageId(uploadedImages[0].id)
+        }
+        if (!bannerImageUrl && uploadedImages.length > 1) {
+          setBannerImageUrl(uploadedImages[1].image_url)
+          setCoverImageId(uploadedImages[1].id)
+        }
       }
 
       setSuccessBanner(
-        `${uploadedImages.length} image(s) uploaded successfully!`
+        `${filesArray.length} gallery image(s) uploaded successfully!`
       )
-      setTimeout(() => setSuccessBanner(''), 4000)
+      setTimeout(() => setSuccessBanner(''), 3500)
     } catch (err: unknown) {
       const errorObj = err as { message?: string }
-      setErrorMessage(errorObj.message || 'Failed to upload image(s)')
+      setErrorMessage(errorObj.message || 'Failed to upload gallery image(s)')
     } finally {
       setIsUploadingGallery(false)
       if (galleryInputRef.current) galleryInputRef.current.value = ''
     }
   }
 
-  // Dedicated Featured Image File Handler
-  const handleFeaturedFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setFeaturedImageFile(file)
-    setFeaturedImageUrl(URL.createObjectURL(file))
-  }
-
-  // Dedicated Banner Image File Handler
-  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBannerImageFile(file)
-    setBannerImageUrl(URL.createObjectURL(file))
-  }
-
-  // Select gallery item as featured (PATCH /projects/:id/images/:imageId/featured & /projects/:id/select-images)
+  // Select gallery item as featured (calls PATCH /projects/:id/select-images & PATCH /projects/:id/images/:imageId/featured)
   const handleSelectAsFeatured = async (img: ProjectImage) => {
     setFeaturedImageUrl(img.image_url)
-    setFeaturedImageFile(null)
+    setFeaturedImageId(img.id)
 
     if (projectId && typeof img.id === 'number') {
       try {
-        await projectService.setFeaturedImage(projectId, img.id)
+        await Promise.allSettled([
+          projectService.selectImages(projectId, { featured_image_id: img.id }),
+          projectService.setFeaturedImage(projectId, img.id),
+        ])
+        setSuccessBanner('Featured image updated successfully via API')
       } catch {
-        // keep optimistic assignment
+        setSuccessBanner('Featured image selected')
       }
+    } else {
+      setSuccessBanner('Featured image selected from gallery')
     }
 
-    setSuccessBanner('Featured card image selected')
     setTimeout(() => setSuccessBanner(''), 2500)
   }
 
-  // Select gallery item as cover/banner (PATCH /projects/:id/images/:imageId/cover & /projects/:id/images/:imageId/banner)
+  // Select gallery item as cover/banner (calls PATCH /projects/:id/select-images & PATCH /projects/:id/images/:imageId/cover)
   const handleSelectAsCover = async (img: ProjectImage) => {
     setBannerImageUrl(img.image_url)
-    setBannerImageFile(null)
+    setCoverImageId(img.id)
 
     if (projectId && typeof img.id === 'number') {
       try {
-        await projectService.setCoverImage(projectId, img.id)
+        await Promise.allSettled([
+          projectService.selectImages(projectId, {
+            cover_image_id: img.id,
+            banner_image_id: img.id,
+          }),
+          projectService.setCoverImage(projectId, img.id),
+        ])
+        setSuccessBanner('Cover image updated successfully via API')
       } catch {
-        // keep optimistic assignment
+        setSuccessBanner('Cover image selected')
       }
+    } else {
+      setSuccessBanner('Cover image selected from gallery')
     }
 
-    setSuccessBanner('Cover banner image selected')
     setTimeout(() => setSuccessBanner(''), 2500)
+  }
+
+  const handleClearFeatured = () => {
+    setFeaturedImageUrl('')
+    setFeaturedImageId(null)
+    setSuccessBanner('Featured image cleared')
+    setTimeout(() => setSuccessBanner(''), 2000)
+  }
+
+  const handleClearCover = () => {
+    setBannerImageUrl('')
+    setCoverImageId(null)
+    setSuccessBanner('Cover image cleared')
+    setTimeout(() => setSuccessBanner(''), 2000)
   }
 
   // Delete gallery item (DELETE /projects/:id/images/:imageId)
   const handleDeleteUploadedImage = async (img: ProjectImage) => {
-    if (img.image_url === featuredImageUrl) setFeaturedImageUrl('')
-    if (img.image_url === bannerImageUrl) setBannerImageUrl('')
+    if (img.image_url === featuredImageUrl || img.id === featuredImageId) {
+      setFeaturedImageUrl('')
+      setFeaturedImageId(null)
+    }
+    if (img.image_url === bannerImageUrl || img.id === coverImageId) {
+      setBannerImageUrl('')
+      setCoverImageId(null)
+    }
 
     if (projectId && typeof img.id === 'number') {
       try {
@@ -338,7 +415,7 @@ export default function ProjectForm({
         // continue local removal
       }
     }
-    setGalleryImages((prev) => prev.filter((item) => item.image_url !== img.image_url))
+    setGalleryImages((prev) => prev.filter((item) => item.image_url !== img.image_url && item.id !== img.id))
   }
 
   // Submit Handler
@@ -371,30 +448,19 @@ export default function ProjectForm({
       form.append('status', status)
       form.append('is_featured', String(isFeatured))
 
-      // Featured / Cover Image
-      if (featuredImageFile) {
-        form.append('featured_image', featuredImageFile)
-        form.append('cover_image', featuredImageFile)
-      } else if (featuredImageUrl) {
-        form.append('featured_image', featuredImageUrl)
-        form.append('cover_image', featuredImageUrl)
-      } else {
-        form.append('featured_image', '')
-        form.append('cover_image', '')
-      }
-
-      // Banner Image
-      if (bannerImageFile) {
-        form.append('banner_image', bannerImageFile)
-      } else if (bannerImageUrl) {
-        form.append('banner_image', bannerImageUrl)
-      } else {
-        form.append('banner_image', '')
-      }
+      // Featured / Cover / Banner Image selections
+      form.append('featured_image', featuredImageUrl || '')
+      form.append('cover_image', bannerImageUrl || featuredImageUrl || '')
+      form.append('banner_image', bannerImageUrl || '')
 
       // Images / Gallery
       form.append('images', '')
       form.append('gallery_images', '')
+
+      // If in create mode and staged files exist, append each file
+      for (const file of stagedGalleryFiles) {
+        form.append('gallery_images', file)
+      }
 
       // Descriptions & details
       form.append('short_description', shortDescription.trim())
@@ -415,8 +481,39 @@ export default function ProjectForm({
 
       if (isEditMode && projectId) {
         await projectService.update(projectId, form)
+
+        // Ensure image selections are persisted via /projects/:id/select-images
+        if (typeof featuredImageId === 'number' || typeof coverImageId === 'number') {
+          const payload: { featured_image_id?: number; cover_image_id?: number; banner_image_id?: number } = {}
+          if (typeof featuredImageId === 'number') payload.featured_image_id = featuredImageId
+          if (typeof coverImageId === 'number') {
+            payload.cover_image_id = coverImageId
+            payload.banner_image_id = coverImageId
+          }
+          await projectService.selectImages(projectId, payload).catch(() => {})
+        }
       } else {
-        await projectService.create(form)
+        const createdProject = await projectService.create(form)
+
+        // If new project has staged files, upload to gallery and set selections
+        if (createdProject?.id && stagedGalleryFiles.length > 0) {
+          try {
+            const uploadedItems: ProjectImage[] = []
+            for (const file of stagedGalleryFiles) {
+              const res = await projectService.createImage(createdProject.id, { image: file })
+              if (res) uploadedItems.push(res)
+            }
+            if (uploadedItems.length > 0) {
+              await projectService.selectImages(createdProject.id, {
+                featured_image_id: uploadedItems[0].id,
+                cover_image_id: uploadedItems[1]?.id || uploadedItems[0].id,
+                banner_image_id: uploadedItems[1]?.id || uploadedItems[0].id,
+              })
+            }
+          } catch {
+            // best-effort post-creation upload
+          }
+        }
       }
 
       setSuccessBanner(
@@ -947,10 +1044,10 @@ export default function ProjectForm({
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-emerald-400" />
-                <span>Project Media & Images</span>
+                <span>Project Gallery & Image Selection</span>
               </h2>
               <p className="text-xs text-zinc-500 mt-0.5">
-                Upload images via the upload button, then click "Set Featured" or "Set Cover" on any card below.
+                Upload all project images to the gallery below. Designate which image is Featured and which is Cover directly from the gallery or preview cards.
               </p>
             </div>
 
@@ -967,143 +1064,189 @@ export default function ProjectForm({
                 type="button"
                 disabled={isUploadingGallery}
                 onClick={() => galleryInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-200 text-xs font-semibold text-zinc-950 transition-all cursor-pointer disabled:opacity-50 active:scale-95 shadow-xs"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-xs font-semibold text-zinc-950 transition-all cursor-pointer disabled:opacity-50 active:scale-95 shadow-xs"
               >
                 {isUploadingGallery ? (
                   <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
                 ) : (
                   <Upload className="w-4 h-4 text-zinc-950" />
                 )}
-                <span>Upload Media</span>
+                <span>Upload Gallery Images</span>
               </button>
             </div>
           </div>
 
-          {/* Active Selections Summary Cards */}
+          {/* Active Selections Summary Cards: Featured & Cover Selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
-            {/* Selected Featured Image */}
+            {/* 1. Selected Featured Image */}
             <div
-              className={`p-4 rounded-xl border transition-all ${
+              className={`p-4 rounded-2xl border transition-all ${
                 featuredImageUrl
-                  ? 'bg-amber-950/20 border-amber-500/40'
-                  : 'bg-zinc-900/40 border-zinc-800'
+                  ? 'bg-amber-950/15 border-amber-500/40 ring-1 ring-amber-500/20 shadow-lg shadow-amber-500/5'
+                  : 'bg-zinc-900/30 border-zinc-800/80'
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                   <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                   <span>Featured Image (Card & Listing Thumbnail)</span>
                 </span>
-                {featuredImageUrl && (
-                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-400/10 px-2 py-0.5 rounded">
-                    Selected
+                {featuredImageUrl ? (
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-zinc-500 italic">
+                    Not selected
                   </span>
                 )}
               </div>
+
               {featuredImageUrl ? (
-                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
-                  <img
-                    src={getProjectImageUrl(featuredImageUrl)}
-                    alt="Featured preview"
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFeaturedImageUrl('')
-                      setFeaturedImageFile(null)
-                    }}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 transition-colors"
-                    title="Clear selection"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                <div className="space-y-3">
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-zinc-800 flex items-center justify-center group">
+                    <img
+                      src={getProjectImageUrl(featuredImageUrl)}
+                      alt="Featured selection"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleClearFeatured}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 backdrop-blur-xs border border-white/10 transition-colors cursor-pointer"
+                      title="Clear featured selection"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-[10px] font-mono text-zinc-300 border border-white/10 backdrop-blur-xs">
+                      {featuredImageId ? `ID #${featuredImageId}` : 'Selected'}
+                    </div>
+                  </div>
+
+                  {/* Dropdown selector among uploaded gallery images */}
+                  {galleryImages.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-zinc-400 whitespace-nowrap">
+                        Switch image:
+                      </label>
+                      <select
+                        value={featuredImageUrl}
+                        onChange={(e) => {
+                          const matched = galleryImages.find((img) => img.image_url === e.target.value)
+                          if (matched) handleSelectAsFeatured(matched)
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-hidden focus:border-amber-500"
+                      >
+                        {galleryImages.map((img, i) => (
+                          <option key={img.id || i} value={img.image_url}>
+                            Image #{i + 1} {img.caption ? `— ${img.caption}` : ''} {typeof img.id === 'number' ? `(ID #${img.id})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div
-                  onClick={() => featuredInputRef.current?.click()}
-                  className="w-full h-36 rounded-lg border border-dashed border-zinc-800 hover:border-zinc-700 flex flex-col items-center justify-center gap-1 text-center p-3 cursor-pointer transition-colors"
-                >
+                <div className="h-36 rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 flex flex-col items-center justify-center gap-1.5 text-center p-4">
                   <Star className="w-5 h-5 text-zinc-600" />
-                  <span className="text-[11px] text-zinc-400">Click to upload or choose from gallery</span>
-                  <input
-                    ref={featuredInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFeaturedFileChange}
-                    className="hidden"
-                  />
+                  <span className="text-xs text-zinc-400 font-medium">No featured image selected</span>
+                  <span className="text-[11px] text-zinc-500 max-w-xs">
+                    Upload gallery images below, then click "Featured" on any card or choose from the dropdown.
+                  </span>
                 </div>
               )}
             </div>
 
-            {/* Selected Cover / Banner Image */}
+            {/* 2. Selected Cover / Banner Image */}
             <div
-              className={`p-4 rounded-xl border transition-all ${
+              className={`p-4 rounded-2xl border transition-all ${
                 bannerImageUrl
-                  ? 'bg-cyan-950/20 border-cyan-500/40'
-                  : 'bg-zinc-900/40 border-zinc-800'
+                  ? 'bg-cyan-950/15 border-cyan-500/40 ring-1 ring-cyan-500/20 shadow-lg shadow-cyan-500/5'
+                  : 'bg-zinc-900/30 border-zinc-800/80'
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                   <LayoutTemplate className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Cover / Banner Image (Hero Header)</span>
+                  <span>Cover Image (Header & Hero Banner)</span>
                 </span>
-                {bannerImageUrl && (
-                  <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider bg-cyan-400/10 px-2 py-0.5 rounded">
-                    Selected
+                {bannerImageUrl ? (
+                  <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider bg-cyan-400/10 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
+                    Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-zinc-500 italic">
+                    Not selected
                   </span>
                 )}
               </div>
+
               {bannerImageUrl ? (
-                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-black border border-zinc-800 flex items-center justify-center">
-                  <img
-                    src={getProjectImageUrl(bannerImageUrl)}
-                    alt="Cover preview"
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBannerImageUrl('')
-                      setBannerImageFile(null)
-                    }}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 transition-colors"
-                    title="Clear selection"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                <div className="space-y-3">
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-zinc-800 flex items-center justify-center group">
+                    <img
+                      src={getProjectImageUrl(bannerImageUrl)}
+                      alt="Cover selection"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleClearCover}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/80 hover:bg-red-950 text-zinc-300 hover:text-red-400 backdrop-blur-xs border border-white/10 transition-colors cursor-pointer"
+                      title="Clear cover selection"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-[10px] font-mono text-zinc-300 border border-white/10 backdrop-blur-xs">
+                      {coverImageId ? `ID #${coverImageId}` : 'Selected'}
+                    </div>
+                  </div>
+
+                  {/* Dropdown selector among uploaded gallery images */}
+                  {galleryImages.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-zinc-400 whitespace-nowrap">
+                        Switch image:
+                      </label>
+                      <select
+                        value={bannerImageUrl}
+                        onChange={(e) => {
+                          const matched = galleryImages.find((img) => img.image_url === e.target.value)
+                          if (matched) handleSelectAsCover(matched)
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-hidden focus:border-cyan-500"
+                      >
+                        {galleryImages.map((img, i) => (
+                          <option key={img.id || i} value={img.image_url}>
+                            Image #{i + 1} {img.caption ? `— ${img.caption}` : ''} {typeof img.id === 'number' ? `(ID #${img.id})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div
-                  onClick={() => bannerInputRef.current?.click()}
-                  className="w-full h-36 rounded-lg border border-dashed border-zinc-800 hover:border-zinc-700 flex flex-col items-center justify-center gap-1 text-center p-3 cursor-pointer transition-colors"
-                >
+                <div className="h-36 rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 flex flex-col items-center justify-center gap-1.5 text-center p-4">
                   <LayoutTemplate className="w-5 h-5 text-zinc-600" />
-                  <span className="text-[11px] text-zinc-400">Click to upload or choose from gallery</span>
-                  <input
-                    ref={bannerInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleBannerFileChange}
-                    className="hidden"
-                  />
+                  <span className="text-xs text-zinc-400 font-medium">No cover image selected</span>
+                  <span className="text-[11px] text-zinc-500 max-w-xs">
+                    Upload gallery images below, then click "Cover" on any card or choose from the dropdown.
+                  </span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Uploaded Images Gallery View */}
+          {/* Uploaded Gallery Images Grid */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-semibold text-zinc-300 block">
-                  Project Gallery View ({galleryImages.length})
+                  Uploaded Gallery Images ({galleryImages.length})
                 </span>
                 <span className="text-[11px] text-zinc-500">
-                  Manage image designations, order, alt texts, captions, and lightbox previews.
+                  Click "Featured" or "Cover" on any image card to designate it via the API.
                 </span>
               </div>
             </div>
@@ -1118,6 +1261,13 @@ export default function ProjectForm({
               onSelectFeatured={handleSelectAsFeatured}
               onSelectCover={handleSelectAsCover}
               onDeleteImage={handleDeleteUploadedImage}
+              onUploadSuccess={() => {
+                if (projectId) {
+                  projectService.getGalleryImages(projectId).then((imgs) => {
+                    setGalleryImages(imgs)
+                  })
+                }
+              }}
             />
           </div>
         </div>

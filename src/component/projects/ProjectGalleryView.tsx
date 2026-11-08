@@ -213,7 +213,10 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       if (onSelectFeatured) {
         await onSelectFeatured(img)
       } else if (projectId && typeof img.id === 'number') {
-        await projectService.setFeaturedImage(projectId, img.id)
+        await Promise.allSettled([
+          projectService.selectImages(projectId, { featured_image_id: img.id }),
+          projectService.setFeaturedImage(projectId, img.id),
+        ])
       }
 
       const updated = images.map((i) => ({
@@ -222,7 +225,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       }))
       setImages(updated)
       if (onImagesChange) onImagesChange(updated)
-      showToast('Set as Featured Image')
+      showToast('Set as Featured Image via API')
     } catch {
       showToast('Failed to update featured image')
     } finally {
@@ -236,7 +239,13 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       if (onSelectCover) {
         await onSelectCover(img)
       } else if (projectId && typeof img.id === 'number') {
-        await projectService.setCoverImage(projectId, img.id)
+        await Promise.allSettled([
+          projectService.selectImages(projectId, {
+            cover_image_id: img.id,
+            banner_image_id: img.id,
+          }),
+          projectService.setCoverImage(projectId, img.id),
+        ])
       }
 
       const updated = images.map((i) => ({
@@ -245,7 +254,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       }))
       setImages(updated)
       if (onImagesChange) onImagesChange(updated)
-      showToast('Set as Cover Image')
+      showToast('Set as Cover Image via API')
     } catch {
       showToast('Failed to update cover image')
     } finally {
@@ -259,7 +268,10 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       if (onSelectBanner) {
         await onSelectBanner(img)
       } else if (projectId && typeof img.id === 'number') {
-        await projectService.setBannerImage(projectId, img.id)
+        await Promise.allSettled([
+          projectService.selectImages(projectId, { banner_image_id: img.id }),
+          projectService.setBannerImage(projectId, img.id),
+        ])
       }
 
       const updated = images.map((i) => ({
@@ -268,7 +280,7 @@ export const ProjectGalleryView: React.FC<ProjectGalleryViewProps> = ({
       }))
       setImages(updated)
       if (onImagesChange) onImagesChange(updated)
-      showToast('Set as Banner Image')
+      showToast('Set as Banner Image via API')
     } catch {
       showToast('Failed to update banner image')
     } finally {
