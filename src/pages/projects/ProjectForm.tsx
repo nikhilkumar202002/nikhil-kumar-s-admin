@@ -548,7 +548,7 @@ export default function ProjectForm({
                 {isLoadingCategories && (
                   <span className="text-[10px] text-zinc-500 flex items-center gap-1">
                     <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-400" />
-                    Loading API...
+                    Loading...
                   </span>
                 )}
               </div>
@@ -558,10 +558,10 @@ export default function ProjectForm({
                 onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
                 className="w-full px-3.5 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all cursor-pointer font-medium"
               >
-                <option value="">Select Category from API...</option>
+                <option value="">Select Category...</option>
                 {availableCategories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
-                    {cat.name} (ID: #{cat.id})
+                    {cat.name}
                   </option>
                 ))}
               </select>
@@ -663,20 +663,20 @@ export default function ProjectForm({
           </div>
         </div>
 
-        {/* Section B: Technologies Selection from API Dropdown */}
+        {/* Section B: Technologies Selection */}
         <div className="p-5 sm:p-6 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
             <div className="flex items-center gap-2">
               <Cpu className="w-4 h-4 text-emerald-400" />
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
-                Technologies & Tools (from API)
+                Technologies & Tools
               </h2>
             </div>
             <div className="flex items-center gap-2">
               {isLoadingTechs && (
                 <span className="text-[10px] text-zinc-500 flex items-center gap-1">
                   <Loader2 className="w-2.5 h-2.5 animate-spin text-emerald-400" />
-                  Loading API...
+                  Loading...
                 </span>
               )}
               <span className="text-[11px] text-zinc-400 font-mono">
@@ -686,14 +686,14 @@ export default function ProjectForm({
           </div>
 
           <p className="text-xs text-zinc-400">
-            Select technologies from the API dropdown to associate them with this project:
+            Select technologies from the dropdown to associate them with this project:
           </p>
 
           {/* 1. Technology Select Dropdown */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                Select from API Dropdown
+                Select Technology
               </label>
               <select
                 value=""
@@ -705,12 +705,12 @@ export default function ProjectForm({
                 }}
                 className="w-full px-3.5 py-2.5 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all cursor-pointer font-medium"
               >
-                <option value="">-- Choose Technology from API Dropdown --</option>
+                <option value="">-- Choose Technology --</option>
                 {availableTechnologies
                   .filter((tech) => !selectedTechIds.includes(tech.id))
                   .map((tech) => (
                     <option key={tech.id} value={tech.id}>
-                      {tech.name} (ID: #{tech.id})
+                      {tech.name}
                     </option>
                   ))}
               </select>
@@ -782,7 +782,7 @@ export default function ProjectForm({
                       key={id}
                       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white text-zinc-950 border border-white text-xs font-semibold shadow-xs animate-in fade-in zoom-in-95 duration-150"
                     >
-                      <span>{tech?.name || `Tech #${id}`}</span>
+                      <span>{tech?.name || 'Technology'}</span>
                       <button
                         type="button"
                         onClick={() => handleToggleTech(id)}
@@ -798,11 +798,11 @@ export default function ProjectForm({
             )}
           </div>
 
-          {/* 3. Quick-Click Options (All available from API) */}
+          {/* 3. Quick-Click Options */}
           {availableTechnologies.length > 0 && (
             <div className="pt-3 border-t border-zinc-900 space-y-1.5">
               <span className="text-[11px] text-zinc-500 block">
-                Quick click to toggle from available API technologies:
+                Quick click to toggle technologies:
               </span>
               <div className="flex flex-wrap items-center gap-1.5">
                 {availableTechnologies.map((tech) => {
@@ -929,7 +929,7 @@ export default function ProjectForm({
                 ) : (
                   <Upload className="w-4 h-4 text-zinc-950" />
                 )}
-                <span>Upload Media (POST /projects/upload)</span>
+                <span>Upload Media</span>
               </button>
             </div>
           </div>
